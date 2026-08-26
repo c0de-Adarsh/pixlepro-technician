@@ -1,5 +1,9 @@
 import axios from "axios";
-const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3009/";
+const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "https://pixle-technician.onrender.com/";
+
+
+// const Constants = "https://pixle-technician.onrender.com/"
+// const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3009/";
 
 let cachedApiKey = "";
 
