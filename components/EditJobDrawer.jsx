@@ -192,8 +192,12 @@ export default function EditJobDrawer({ isOpen, onClose, job, onJobUpdated }) {
       const res = await Api("PUT", `api/events/${targetId}`, payload, router);
       if (res && (res.success || res.data || res._id)) {
         toast.success("Job updated successfully!");
-        if (onJobUpdated) {
-          onJobUpdated({ ...job, ...payload, id: targetId });
+        try {
+          if (onJobUpdated) {
+            onJobUpdated({ ...job, ...payload, id: targetId, _id: targetId });
+          }
+        } catch (cbErr) {
+          console.error("onJobUpdated callback error:", cbErr);
         }
         onClose();
       } else {

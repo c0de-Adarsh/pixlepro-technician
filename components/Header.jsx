@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import {
   Search,
@@ -17,10 +17,14 @@ import {
   Settings as SettingsIcon,
   Zap,
   LayoutGrid,
+  X,
+  Loader2,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { motion, AnimatePresence } from "framer-motion";
 import { goeyToast as toast } from "goey-toast";
+import { Api } from "../services/service";
+import ClockModal from "./ClockModal";
 
 export default function Header({ onMenuClick, onSearchChange }) {
   const { theme, toggleTheme } = useTheme();
@@ -28,6 +32,46 @@ export default function Header({ onMenuClick, onSearchChange }) {
   const [searchVal, setSearchVal] = useState("");
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [onScreenNotifs, setOnScreenNotifs] = useState(true);
+
+  const [isClockedIn, setIsClockedIn] = useState(false);
+  const [currentShift, setCurrentShift] = useState(null);
+  const [showClockModal, setShowClockModal] = useState(false);
+  const [clockLoading, setClockLoading] = useState(false);
+
+  const fetchClockStatus = async () => {
+    try {
+      const res = await Api("GET", "api/timesheets/status?user_name=PIXL TECHNICIAN", null, router);
+      if (res && res.success) {
+        setIsClockedIn(Boolean(res.is_clocked_in));
+        setCurrentShift(res.current_shift || null);
+      }
+    } catch (err) {}
+  };
+
+  useEffect(() => {
+    fetchClockStatus();
+  }, [router]);
+
+  const handleToggleClock = async () => {
+    try {
+      setClockLoading(true);
+      const action = isClockedIn ? "clock_out" : "clock_in";
+      const res = await Api("POST", "api/timesheets/clock", { action, user_name: "PIXL TECHNICIAN" }, router);
+      if (res && (res.success || res.data)) {
+        setIsClockedIn(!isClockedIn);
+        setCurrentShift(action === "clock_in" ? res.data : null);
+        setShowClockModal(false);
+        toast.success(isClockedIn ? "Clocked out successfully" : "Clocked in successfully");
+        fetchClockStatus();
+      } else {
+        toast.error(res?.message || "Failed to update clock status");
+      }
+    } catch (err) {
+      toast.error("Error updating clock status");
+    } finally {
+      setClockLoading(false);
+    }
+  };
 
   const handleSearch = (e) => {
     const val = e.target.value;
@@ -124,13 +168,30 @@ export default function Header({ onMenuClick, onSearchChange }) {
                 exit={{ opacity: 0, y: 8, scale: 0.96 }}
                 className="absolute right-0 mt-2 w-72 bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-50 text-slate-800 dark:text-slate-100 p-4 space-y-3"
               >
-                {/* Header Title: PIXL TECHNICIAN & Red Clock Icon */}
+                {/* Header Title: PIXL TECHNICIAN & Red/Green Clock Icon with tooltip */}
                 <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800/80">
                   <span className="text-xs font-extrabold tracking-wider uppercase text-slate-700 dark:text-slate-200">
                     PIXL TECHNICIAN
                   </span>
-                  <div className="p-1 rounded-full bg-red-50 dark:bg-red-950/40 text-[#D31010]">
-                    <Clock className="w-4 h-4" />
+                  <div className="relative group/clock">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowProfileMenu(false);
+                        setShowClockModal(true);
+                      }}
+                      className={`p-1.5 rounded-full transition-all cursor-pointer ${
+                        isClockedIn
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-300 dark:border-emerald-700 hover:ring-2 hover:ring-emerald-400"
+                          : "bg-red-50 dark:bg-red-950/40 text-[#D31010] border border-red-200 dark:border-red-900/40 hover:ring-2 hover:ring-red-400"
+                      }`}
+                    >
+                      <Clock className="w-4 h-4" />
+                    </button>
+                    {/* Tooltip on hover (Screenshot 1) */}
+                    <div className="absolute right-0 -bottom-8 pointer-events-none opacity-0 group-hover/clock:opacity-100 transition-opacity bg-slate-800 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg shadow-lg whitespace-nowrap z-50">
+                      {isClockedIn ? "Clocked In" : "Clocked Out"}
+                    </div>
                   </div>
                 </div>
 
@@ -243,6 +304,16 @@ export default function Header({ onMenuClick, onSearchChange }) {
           </AnimatePresence>
         </div>
       </div>
+
+      {/* Clock In / Out Modal (Document Portal) */}
+      <ClockModal
+        isOpen={showClockModal}
+        onClose={() => setShowClockModal(false)}
+        isClockedIn={isClockedIn}
+        onToggleClock={handleToggleClock}
+        loading={clockLoading}
+        currentShift={currentShift}
+      />
     </header>
   );
 }

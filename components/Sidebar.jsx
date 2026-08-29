@@ -104,36 +104,90 @@ export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClien
         {/* Create New Popover Dropdown Menu */}
         <AnimatePresence>
           {showCreateMenu && (
-            <motion.div
-              initial={{ opacity: 0, y: 5, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, y: 5, scale: 0.95 }}
-              className="absolute left-1 right-1 top-full mt-2 bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-xl py-1.5 z-40 text-slate-800 dark:text-slate-100 overflow-hidden"
-            >
-              <button
-                onClick={() => {
-                  setShowCreateMenu(false);
-                  if (onOpenAddClient) onOpenAddClient();
-                  else if (onCreateClick) onCreateClick();
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center gap-2 cursor-pointer"
+            <>
+              <div
+                className="fixed inset-0 z-30"
+                onClick={() => setShowCreateMenu(false)}
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 5, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 5, scale: 0.95 }}
+                className="absolute left-1 right-1 top-full mt-2 bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl py-1.5 z-40 text-slate-800 dark:text-slate-100 overflow-hidden min-w-[170px]"
               >
-                <span>Client</span>
-              </button>
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    router.push("/leads/new");
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Lead
+                </button>
 
-              <div className="border-t border-slate-100 dark:border-slate-800" />
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    router.push("/jobs/new");
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Job
+                </button>
 
-              <button
-                onClick={() => {
-                  setShowCreateMenu(false);
-                  if (onOpenAddEvent) onOpenAddEvent();
-                  else if (onCreateClick) onCreateClick();
-                }}
-                className="w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center gap-2 cursor-pointer"
-              >
-                <span>Event</span>
-              </button>
-            </motion.div>
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    if (onOpenAddClient) onOpenAddClient();
+                    else router.push("/clients?create=true");
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Client
+                </button>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    router.push("/estimates?create=true");
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Estimate
+                </button>
+
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    router.push("/invoices?create=true");
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Invoice
+                </button>
+
+                <div className="border-t border-slate-100 dark:border-slate-800 my-1" />
+
+                <button
+                  onClick={() => {
+                    setShowCreateMenu(false);
+                    if (onOpenAddEvent) onOpenAddEvent();
+                    else if (onCreateClick) onCreateClick();
+                    if (onClose) onClose();
+                  }}
+                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                >
+                  Event
+                </button>
+              </motion.div>
+            </>
           )}
         </AnimatePresence>
       </div>

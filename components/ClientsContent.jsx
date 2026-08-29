@@ -28,6 +28,12 @@ export default function ClientsContent() {
   const [showFranchises, setShowFranchises] = useState(false);
 
   useEffect(() => {
+    if (router.query.create === "true") {
+      setIsAddClientOpen(true);
+    }
+  }, [router.query]);
+
+  useEffect(() => {
     let isMounted = true;
     const fetchClients = async () => {
       try {

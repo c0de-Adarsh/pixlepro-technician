@@ -70,73 +70,71 @@ export default function JobsContent() {
     }
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchJobs = async () => {
-      try {
-        const res = await Api("GET", "api/events", null, router);
-        if (isMounted && res) {
-          const raw = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
-          if (raw.length > 0) {
-            const mapped = raw.map((e) => {
-              const shortId = e._id ? e._id.substring(e._id.length - 4) : (e.id || "1065");
-              const addr = e.address;
-              const formattedAddr = typeof addr === "object"
-                ? `${addr.street || ""} ${addr.unit || ""}, ${addr.city || ""}, ${addr.region || ""} ${addr.postal_code || ""}`.trim()
-                : (e.address || "");
-              const sched = formatScheduleDate(e.schedule?.start_date || e.start_date, e.schedule?.start_time || e.start_time);
-              return {
-                id: shortId,
-                _id: e._id || e.id || shortId,
-                jobId: shortId,
-                title: e.title || `Job #${shortId}`,
-                clientName: e.client_name || "Client",
-                companyName: e.company_name || "",
-                status: normalizeStatus(e.status),
-                client: {
-                  name: e.client_name || "Client",
-                  email: e.email || "",
-                },
-                tags: Array.isArray(e.tags) ? e.tags : [],
-                jobType: e.job_type || e.title?.split(" - ")[0] || "CAPTURE TV",
-                serviceArea: e.service_area || "Edmonton",
-                scheduled: sched,
-                scheduledSubtext: e.schedule?.start_date ? "scheduled" : "",
-                startDate: e.schedule?.start_date ? String(e.schedule.start_date).split("T")[0] : "2026-08-20",
-                startTime: e.schedule?.start_time || "07:45 AM",
-                endDate: e.schedule?.end_date ? String(e.schedule.end_date).split("T")[0] : "2026-08-20",
-                endTime: e.schedule?.end_time || "07:50 AM",
-                isAllDay: e.schedule?.is_all_day || false,
-                phone: e.phone || "",
+  const fetchJobs = async () => {
+    try {
+      const res = await Api("GET", "api/events", null, router);
+      if (res) {
+        const raw = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+        const nonLeads = raw.filter((e) => !e.is_lead && e.type !== "lead" && e.status !== "lead");
+        if (nonLeads.length > 0) {
+          const mapped = nonLeads.map((e) => {
+            const shortId = e._id ? e._id.substring(e._id.length - 4) : (e.id || "1065");
+            const addr = e.address;
+            const formattedAddr = typeof addr === "object"
+              ? `${addr.street || ""} ${addr.unit || ""}, ${addr.city || ""}, ${addr.region || ""} ${addr.postal_code || ""}`.trim()
+              : (e.address || "");
+            const sched = formatScheduleDate(e.schedule?.start_date || e.start_date, e.schedule?.start_time || e.start_time);
+            return {
+              id: shortId,
+              _id: e._id || e.id || shortId,
+              jobId: shortId,
+              title: e.title || `Job #${shortId}`,
+              clientName: e.client_name || "Client",
+              companyName: e.company_name || "",
+              status: normalizeStatus(e.status),
+              client: {
+                name: e.client_name || "Client",
                 email: e.email || "",
-                assignedTechs: Array.isArray(e.assigned_techs) && e.assigned_techs.length > 0 ? e.assigned_techs : (Array.isArray(e.team_members) ? e.team_members : (e.assigned_tech ? [e.assigned_tech] : ["PIXL TECHNICIAN"])),
-                tech: e.assigned_tech || (Array.isArray(e.assigned_techs) ? e.assigned_techs[0] : null),
-                address: formattedAddr || "Lucknow Main Street",
-                timeInStatus: "1 DAY",
-                totalPrice: e.total_amount ? `$${Number(e.total_amount).toFixed(2)}` : (e.total ? `$${Number(e.total).toFixed(2)}` : "$0.00"),
-                total_amount: e.total_amount || e.total || 0,
-                balance_due: e.balance_due || e.total_amount || 0,
-                line_items: Array.isArray(e.line_items) ? e.line_items : [],
-                notes: e.description || "",
-                description: e.description || "",
-                jobName: e.title ? e.title.split(" - ")[0] : "",
-                source: e.job_source || "Google",
-                isUnpaid: true,
-              };
-            });
-            setJobs(mapped);
-          } else {
-            setJobs([]);
-          }
+              },
+              tags: Array.isArray(e.tags) ? e.tags : [],
+              jobType: e.job_type || e.title?.split(" - ")[0] || "CAPTURE TV",
+              serviceArea: e.service_area || "Edmonton",
+              scheduled: sched,
+              scheduledSubtext: e.schedule?.start_date ? "scheduled" : "",
+              startDate: e.schedule?.start_date ? String(e.schedule.start_date).split("T")[0] : "2026-08-20",
+              startTime: e.schedule?.start_time || "07:45 AM",
+              endDate: e.schedule?.end_date ? String(e.schedule.end_date).split("T")[0] : "2026-08-20",
+              endTime: e.schedule?.end_time || "07:50 AM",
+              isAllDay: e.schedule?.is_all_day || false,
+              phone: e.phone || "",
+              email: e.email || "",
+              assignedTechs: Array.isArray(e.assigned_techs) && e.assigned_techs.length > 0 ? e.assigned_techs : (Array.isArray(e.team_members) ? e.team_members : (e.assigned_tech ? [e.assigned_tech] : ["PIXL TECHNICIAN"])),
+              tech: e.assigned_tech || (Array.isArray(e.assigned_techs) ? e.assigned_techs[0] : null),
+              address: formattedAddr || "Lucknow Main Street",
+              timeInStatus: "1 DAY",
+              totalPrice: e.total_amount ? `$${Number(e.total_amount).toFixed(2)}` : (e.total ? `$${Number(e.total).toFixed(2)}` : "$0.00"),
+              total_amount: e.total_amount || e.total || 0,
+              balance_due: e.balance_due || e.total_amount || 0,
+              line_items: Array.isArray(e.line_items) ? e.line_items : [],
+              notes: e.description || "",
+              description: e.description || "",
+              jobName: e.title ? e.title.split(" - ")[0] : "",
+              source: e.job_source || "Google",
+              isUnpaid: true,
+            };
+          });
+          setJobs(mapped);
+        } else {
+          setJobs([]);
         }
-      } catch (err) {
-        console.error("Error fetching jobs:", err);
       }
-    };
+    } catch (err) {
+      console.error("Error fetching jobs:", err);
+    }
+  };
+
+  useEffect(() => {
     fetchJobs();
-    return () => {
-      isMounted = false;
-    };
   }, [router]);
 
   // Status Tabs Data

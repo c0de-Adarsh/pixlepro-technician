@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -16,153 +16,97 @@ import {
   MapPin,
   Tag,
   Clock,
-  MoreVertical,
-  SlidersHorizontal,
+  Briefcase,
+  RefreshCw,
+  ArrowRightCircle,
+  Trash2,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { goeyToast as toast } from "goey-toast";
-
-// Sample initial leads matching the exact design reference image
-const initialLeads = [
-  {
-    id: 48,
-    status: "new",
-    tags: [],
-    source: "Facebook",
-    client: {
-      name: "Chong Cc",
-      email: "jesusmansion@gmail.com",
-    },
-    location: "",
-    type: "Camera Installation",
-    phone: "(604) 518-1614",
-    created: "Mon Sep 08, 2025 10:03 pm",
-    modified: "Mon Sep 08, 2025 10:03 pm",
-  },
-  {
-    id: 46,
-    status: "in progress",
-    tags: ["SERVICE CAL"],
-    source: "Facebook",
-    client: {
-      name: "David",
-      email: "djpro@shaw.ca",
-    },
-    location: "487 Ev...",
-    type: "Service Call",
-    phone: "(408) 803-4481",
-    created: "Sat Sep 06, 2025 10:13 pm",
-    modified: "Mon Sep 08, 2025 10:13 pm",
-  },
-  {
-    id: 45,
-    status: "new",
-    tags: [],
-    source: "Google Ads",
-    client: {
-      name: "Bruce Fos",
-      email: "jb.foster@shaw.ca",
-    },
-    location: "850 11 ...",
-    type: "Tv Installation",
-    phone: "(403) 837-2022",
-    created: "Thu May 22, 2025 02:59 pm",
-    modified: "Thu May 22, 2025 02:59 pm",
-  },
-  {
-    id: 44,
-    status: "estimated",
-    tags: ["VIP"],
-    source: "Website",
-    client: {
-      name: "Sarah Jenkins",
-      email: "s.jenkins@outlook.com",
-    },
-    location: "1024 Broadway St",
-    type: "Security System",
-    phone: "(604) 772-9104",
-    created: "Wed May 21, 2025 11:20 am",
-    modified: "Thu May 22, 2025 09:15 am",
-  },
-  {
-    id: 43,
-    status: "approved",
-    tags: ["SERVICE CAL"],
-    source: "Referral",
-    client: {
-      name: "Michael Chang",
-      email: "m.chang@techcorp.io",
-    },
-    location: "550 Market St",
-    type: "Commercial Repair",
-    phone: "(415) 309-8812",
-    created: "Tue May 20, 2025 04:45 pm",
-    modified: "Wed May 21, 2025 08:30 am",
-  },
-  {
-    id: 42,
-    status: "approved",
-    tags: [],
-    source: "Direct",
-    client: {
-      name: "Elena Rostova",
-      email: "elena.r@designhub.com",
-    },
-    location: "789 Pine Ave",
-    type: "CCTV Setup",
-    phone: "(510) 902-1144",
-    created: "Mon May 19, 2025 01:12 pm",
-    modified: "Tue May 20, 2025 10:00 am",
-  },
-  {
-    id: 41,
-    status: "estimated",
-    tags: ["URGENT"],
-    source: "Google Ads",
-    client: {
-      name: "Robert Vance",
-      email: "vance.r@realty.com",
-    },
-    location: "312 Oak Rd",
-    type: "Access Control",
-    phone: "(408) 661-3920",
-    created: "Sun May 18, 2025 09:30 am",
-    modified: "Mon May 19, 2025 11:00 am",
-  },
-  {
-    id: 40,
-    status: "estimated",
-    tags: [],
-    source: "Facebook",
-    client: {
-      name: "Amanda Miller",
-      email: "amiller@gmail.com",
-    },
-    location: "901 Maple Terrace",
-    type: "Tv Installation",
-    phone: "(604) 441-2099",
-    created: "Sat May 17, 2025 03:22 pm",
-    modified: "Sun May 18, 2025 04:10 pm",
-  },
-];
+import { Api } from "../services/service";
 
 export default function LeadsContent() {
   const { theme } = useTheme();
   const router = useRouter();
 
-  // Filter & Search states
-  const [leads, setLeads] = useState(initialLeads);
+  const [leads, setLeads] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [selectedFilterCategory, setSelectedFilterCategory] = useState("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedLeads, setSelectedLeads] = useState([]);
   const [rowsPerPage, setRowsPerPage] = useState(25);
   const [currentPage, setCurrentPage] = useState(1);
+  const [convertingId, setConvertingId] = useState(null);
 
-  // Status Filter Dropdown & Date Picker toggle
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
-  const [dateRangeText, setDateRangeText] = useState("Aug 11th, 2026 - Aug 11th, 2026");
+  const [dateRangeText, setDateRangeText] = useState("Recent 30 days");
 
-  // Calculate Metrics dynamically
+  const fetchLeads = async () => {
+    try {
+      setLoading(true);
+      const res = await Api("GET", "api/events?is_lead=true", null, router);
+      if (res) {
+        const raw = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
+        const mapped = raw.map((item) => {
+          const shortId = item._id ? item._id.substring(item._id.length - 4) : item.id;
+          const addr = item.address;
+          const fullAddr = typeof addr === "object"
+            ? `${addr.street || ""} ${addr.city || ""}`.trim()
+            : (item.address || "");
+
+          const createdDate = item.createdAt
+            ? new Date(item.createdAt).toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : "Today";
+
+          const modDate = item.updatedAt
+            ? new Date(item.updatedAt).toLocaleDateString("en-US", {
+                weekday: "short",
+                month: "short",
+                day: "2-digit",
+                year: "numeric",
+                hour: "2-digit",
+                minute: "2-digit",
+              })
+            : createdDate;
+
+          return {
+            id: shortId,
+            _id: item._id,
+            status: item.lead_status || item.status || "new",
+            tags: Array.isArray(item.tags) ? item.tags : [],
+            source: item.job_source || "Website",
+            client: {
+              name: item.client_name || "Client",
+              email: item.email || "",
+            },
+            location: fullAddr || "-",
+            type: item.job_type || item.title?.split(" - ")[0] || "Service Call",
+            phone: item.phone || "-",
+            created: createdDate,
+            modified: modDate,
+            rawItem: item,
+          };
+        });
+        setLeads(mapped);
+      }
+    } catch (err) {
+      console.error("Error fetching leads:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchLeads();
+  }, [router]);
+
   const metrics = useMemo(() => {
     const counts = {
       all: leads.length,
@@ -181,19 +125,17 @@ export default function LeadsContent() {
     });
 
     return [
-      { id: "all", label: "All", count: 21 },
-      { id: "new", label: "New", count: 15 },
-      { id: "scheduled", label: "Scheduled", count: 0 },
-      { id: "in progress", label: "In progress", count: 1 },
-      { id: "estimated", label: "Estimated", count: 3 },
-      { id: "approved", label: "Approved", count: 2 },
+      { id: "all", label: "All", count: counts.all },
+      { id: "new", label: "New", count: counts.new },
+      { id: "scheduled", label: "Scheduled", count: counts.scheduled },
+      { id: "in progress", label: "In progress", count: counts["in progress"] },
+      { id: "estimated", label: "Estimated", count: counts.estimated },
+      { id: "approved", label: "Approved", count: counts.approved },
     ];
   }, [leads]);
 
-  // Filtered Leads dataset
   const filteredLeads = useMemo(() => {
     return leads.filter((item) => {
-      // Category KPI Filter
       if (
         selectedFilterCategory !== "all" &&
         item.status.toLowerCase() !== selectedFilterCategory.toLowerCase()
@@ -201,7 +143,6 @@ export default function LeadsContent() {
         return false;
       }
 
-      // Search Query Filter
       if (searchQuery.trim() !== "") {
         const q = searchQuery.toLowerCase();
         const idMatch = String(item.id).includes(q);
@@ -217,10 +158,9 @@ export default function LeadsContent() {
     });
   }, [leads, selectedFilterCategory, searchQuery]);
 
-  // Checkbox Selection Logic
   const handleSelectAll = (e) => {
     if (e.target.checked) {
-      setSelectedLeads(filteredLeads.map((l) => l.id));
+      setSelectedLeads(filteredLeads.map((l) => l._id || l.id));
     } else {
       setSelectedLeads([]);
     }
@@ -234,23 +174,62 @@ export default function LeadsContent() {
     }
   };
 
-  // Change inline status
-  const handleStatusChange = (id, newStatus) => {
-    setLeads((prev) =>
-      prev.map((l) => (l.id === id ? { ...l, status: newStatus } : l))
-    );
-    toast.success(`Lead #${id} status updated to ${newStatus}`);
+  const handleStatusChange = async (targetId, newStatus) => {
+    try {
+      await Api("PUT", `api/events/${targetId}`, { lead_status: newStatus, status: newStatus }, router);
+      setLeads((prev) =>
+        prev.map((l) => (l._id === targetId || l.id === targetId ? { ...l, status: newStatus } : l))
+      );
+      toast.success(`Lead status updated to ${newStatus}`);
+    } catch (e) {
+      toast.error("Failed to update status");
+    }
   };
 
-  // Export CSV Action
+  const handleConvertToJob = async (lead) => {
+    const targetId = lead._id || lead.id;
+    try {
+      setConvertingId(targetId);
+      const res = await Api("POST", `api/events/${targetId}/convert`, {}, router);
+      if (res && (res.success || res.data)) {
+        toast.success(`Lead converted to Job! It is now visible on the Schedule & Jobs list.`);
+        fetchLeads();
+      } else {
+        toast.error(res?.message || "Failed to convert lead");
+      }
+    } catch (err) {
+      toast.error("Error converting lead to job");
+    } finally {
+      setConvertingId(null);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedLeads.length === 0) return;
+    try {
+      await Promise.all(
+        selectedLeads.map((id) => Api("DELETE", `api/events/${id}`, null, router))
+      );
+      toast.success(`Deleted ${selectedLeads.length} lead(s)`);
+      setSelectedLeads([]);
+      fetchLeads();
+    } catch (err) {
+      toast.error("Error deleting leads");
+    }
+  };
+
   const handleExportCSV = () => {
+    if (filteredLeads.length === 0) {
+      toast.info("No leads to export");
+      return;
+    }
     const csvContent =
       "data:text/csv;charset=utf-8," +
-      ["ID,Client Name,Email,Phone,Status,Type,Source,Created"]
+      ["ID,Client Name,Email,Phone,Status,Type,Source,Location,Created"]
         .concat(
           filteredLeads.map(
             (l) =>
-              `${l.id},"${l.client.name}","${l.client.email}","${l.phone}","${l.status}","${l.type}","${l.source}","${l.created}"`
+              `"${l.id}","${l.client.name}","${l.client.email}","${l.phone}","${l.status}","${l.type}","${l.source}","${l.location}","${l.created}"`
           )
         )
         .join("\n");
@@ -266,27 +245,29 @@ export default function LeadsContent() {
   };
 
   return (
-    <div className="w-full max-w-[1600px] mx-auto space-y-5 pt-6 sm:pt-8 pb-16 px-3 sm:px-6 md:px-8">
-      {/* Top Header: Title & Action Buttons */}
+    <div className="w-full max-w-[1600px] mx-auto space-y-5 pt-6 sm:pt-8 pb-16 px-3 sm:px-6 md:px-8 text-slate-800 dark:text-slate-100">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          Leads
-        </h1>
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+            Leads
+          </h1>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Manage incoming prospects and inquiries before converting them to scheduled jobs.
+          </p>
+        </div>
 
         <div className="flex items-center gap-3">
-          {/* Add New Button */}
           <button
-            onClick={() => toast.info("Opening New Lead Form...")}
+            onClick={() => router.push("/leads/new")}
             className="px-5 py-2.5 bg-[#D31010] hover:bg-[#b00d0d] text-white text-xs sm:text-sm font-bold rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Add new</span>
           </button>
 
-          {/* Export Button */}
           <button
             onClick={handleExportCSV}
-            className="px-4 py-2.5 bg-white dark:bg-[#0E1E31] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-[#D31010] text-xs sm:text-sm font-bold rounded-xl shadow-sm flex items-center gap-2 transition-all cursor-pointer"
+            className="px-4 py-2.5 bg-white dark:bg-[#0E1E31] text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 hover:border-[#D31010] text-xs sm:text-sm font-bold rounded-xl shadow-xs flex items-center gap-2 transition-all cursor-pointer"
           >
             <Download className="w-4 h-4 text-slate-500 dark:text-slate-400" />
             <span>Export</span>
@@ -294,7 +275,6 @@ export default function LeadsContent() {
         </div>
       </div>
 
-      {/* KPI Metrics Status Bar (Scrollable on mobile) */}
       <div className="w-full overflow-x-auto scrollbar-none py-1">
         <div className="flex items-center gap-3 min-w-[760px] sm:min-w-0 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 sm:grid">
           {metrics.map((metric) => {
@@ -303,18 +283,18 @@ export default function LeadsContent() {
               <div
                 key={metric.id}
                 onClick={() => setSelectedFilterCategory(metric.id)}
-                className={`relative overflow-hidden bg-white dark:bg-[#061322]/80 backdrop-blur-md rounded-2xl p-4 flex flex-col justify-between transition-all cursor-pointer select-none shadow-sm hover:shadow-md border ${
+                className={`relative overflow-hidden bg-white dark:bg-[#0E1E31] rounded-2xl p-4 flex flex-col justify-between transition-all cursor-pointer select-none shadow-xs hover:shadow-md border ${
                   isActive
-                    ? "border-slate-300 dark:border-slate-700 border-l-[4px] border-l-[#7A0000] shadow-md"
-                    : "border-slate-200/80 dark:border-white/10 hover:border-slate-300 dark:hover:border-slate-700"
+                    ? "border-slate-300 dark:border-slate-700 border-l-[4px] border-l-[#D31010] shadow-sm"
+                    : "border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
                 }`}
               >
-                <span className="text-xs font-extrabold text-slate-700 dark:text-slate-300 pl-1">
+                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 pl-1">
                   {metric.label}
                 </span>
 
                 <div className="text-right mt-2">
-                  <span className="text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                  <span className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
                     {metric.count}
                   </span>
                 </div>
@@ -324,9 +304,7 @@ export default function LeadsContent() {
         </div>
       </div>
 
-      {/* Filter Control Box Container */}
-      <div className="bg-white/90 dark:bg-[#061322]/70 backdrop-blur-xl border border-red-200/60 dark:border-white/10 rounded-2xl p-3 sm:p-4 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        {/* Filter results accordion toggle */}
+      <div className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
         <div className="relative">
           <button
             onClick={() => setShowFilterDropdown(!showFilterDropdown)}
@@ -340,7 +318,6 @@ export default function LeadsContent() {
             />
           </button>
 
-          {/* Collapsible Filter Dropdown */}
           <AnimatePresence>
             {showFilterDropdown && (
               <motion.div
@@ -376,10 +353,9 @@ export default function LeadsContent() {
           </AnimatePresence>
         </div>
 
-        {/* Date Range Selector Picker Box */}
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-800 rounded-xl">
+        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl">
           <div className="text-right">
-            <span className="block text-[10px] font-bold text-red-600 dark:text-red-400 leading-tight">
+            <span className="block text-[10px] font-bold text-[#D31010] leading-tight">
               Recent 30 days including today
             </span>
             <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
@@ -390,28 +366,45 @@ export default function LeadsContent() {
         </div>
       </div>
 
-      {/* Main Table Card Container */}
-      <div className="bg-white/90 dark:bg-[#061322]/80 backdrop-blur-xl border border-slate-200/80 dark:border-white/10 rounded-2xl shadow-xl overflow-hidden transition-colors duration-300">
-        {/* Table Inner Top Search Bar & Per Page Selector */}
-        <div className="p-3 sm:p-4 border-b border-slate-200/80 dark:border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/30">
-          {/* Search Input Box */}
+      <div className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+        <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/30">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search operations..."
-              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none focus:ring-2 focus:ring-[#D31010]/30 focus:border-[#D31010] transition-all"
+              placeholder="Search leads..."
+              className="w-full pl-10 pr-4 py-2 text-xs sm:text-sm bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-hidden focus:border-[#D31010] transition-all"
             />
           </div>
 
-          {/* Rows Per Page Dropdown */}
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex items-center gap-3">
+            {selectedLeads.length > 0 && (
+              <button
+                onClick={handleBulkDelete}
+                className="px-3 py-1.5 bg-red-50 dark:bg-red-950/40 text-[#D31010] text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer hover:bg-red-100 transition-colors"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Delete ({selectedLeads.length})</span>
+              </button>
+            )}
+
+            <button
+              onClick={() => {
+                fetchLeads();
+                toast.success("Leads refreshed");
+              }}
+              className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
+              title="Refresh"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+            </button>
+
             <select
               value={rowsPerPage}
               onChange={(e) => setRowsPerPage(Number(e.target.value))}
-              className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-none cursor-pointer"
+              className="px-3 py-1.5 text-xs font-bold bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-800 rounded-xl focus:outline-hidden cursor-pointer"
             >
               <option value={10}>10</option>
               <option value={25}>25</option>
@@ -421,11 +414,10 @@ export default function LeadsContent() {
           </div>
         </div>
 
-        {/* Datatable Scroll Container */}
         <div className="w-full overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[1000px]">
+          <table className="w-full text-left border-collapse min-w-[1100px]">
             <thead>
-              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 text-[11px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-400 select-none">
+              <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-slate-900/60 text-[11px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-400 select-none">
                 <th className="py-3 px-3 w-10 text-center">
                   <input
                     type="checkbox"
@@ -434,60 +426,68 @@ export default function LeadsContent() {
                       selectedLeads.length === filteredLeads.length
                     }
                     onChange={handleSelectAll}
-                    className="w-4 h-4 rounded text-[#D31010] focus:ring-[#D31010] border-slate-300 dark:border-slate-700 cursor-pointer"
+                    className="w-4 h-4 rounded text-[#D31010] accent-[#D31010] cursor-pointer"
                   />
                 </th>
-                <th className="py-3 px-3 w-14">ID</th>
+                <th className="py-3 px-3 w-16">ID</th>
                 <th className="py-3 px-3 w-28">Status</th>
-                <th className="py-3 px-3 w-28">Tags</th>
-                <th className="py-3 px-3 w-24">Source</th>
                 <th className="py-3 px-4 min-w-[160px]">Client</th>
                 <th className="py-3 px-3">Location</th>
                 <th className="py-3 px-3">Type</th>
                 <th className="py-3 px-3">Phone</th>
+                <th className="py-3 px-3">Source</th>
                 <th className="py-3 px-3">Created</th>
-                <th className="py-3 px-3">Modified</th>
+                <th className="py-3 px-4 text-right">Convert</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/80 text-xs font-semibold text-slate-800 dark:text-slate-200">
-              {filteredLeads.length === 0 ? (
+            <tbody className="divide-y divide-slate-200/80 dark:divide-slate-800/80 text-xs font-medium text-slate-800 dark:text-slate-200">
+              {loading ? (
                 <tr>
-                  <td colSpan={11} className="py-12 text-center text-slate-400 dark:text-slate-500">
-                    No matching leads found
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                    <div className="flex items-center justify-center gap-2">
+                      <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
+                      <span>Loading leads...</span>
+                    </div>
+                  </td>
+                </tr>
+              ) : filteredLeads.length === 0 ? (
+                <tr>
+                  <td colSpan={10} className="py-12 text-center text-slate-400">
+                    No leads found. Click "Add new" to create one.
                   </td>
                 </tr>
               ) : (
                 filteredLeads.map((item) => {
-                  const isChecked = selectedLeads.includes(item.id);
+                  const targetId = item._id || item.id;
+                  const isChecked = selectedLeads.includes(targetId);
+                  const isConverting = convertingId === targetId;
+
                   return (
                     <tr
-                      key={item.id}
+                      key={targetId}
                       className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
                         isChecked ? "bg-red-50/40 dark:bg-red-950/20" : ""
                       }`}
                     >
-                      {/* Checkbox */}
                       <td className="py-3.5 px-3 text-center">
                         <input
                           type="checkbox"
                           checked={isChecked}
-                          onChange={() => handleSelectOne(item.id)}
-                          className="w-4 h-4 rounded text-[#D31010] focus:ring-[#D31010] border-slate-300 dark:border-slate-700 cursor-pointer"
+                          onChange={() => handleSelectOne(targetId)}
+                          className="w-4 h-4 rounded text-[#D31010] accent-[#D31010] cursor-pointer"
                         />
                       </td>
 
-                      {/* ID */}
                       <td className="py-3.5 px-3 font-bold text-slate-900 dark:text-white">
                         {item.id}
                       </td>
 
-                      {/* Status Dropdown Pill */}
                       <td className="py-3.5 px-3">
                         <select
                           value={item.status}
-                          onChange={(e) => handleStatusChange(item.id, e.target.value)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer outline-none capitalize ${
+                          onChange={(e) => handleStatusChange(targetId, e.target.value)}
+                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer outline-hidden capitalize ${
                             item.status === "new"
                               ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700"
                               : item.status === "in progress"
@@ -498,72 +498,59 @@ export default function LeadsContent() {
                           }`}
                         >
                           <option value="new">new</option>
-                          <option value="in progress">in pr...</option>
+                          <option value="in progress">in progress</option>
                           <option value="scheduled">scheduled</option>
                           <option value="estimated">estimated</option>
                           <option value="approved">approved</option>
                         </select>
                       </td>
 
-                      {/* Tags */}
-                      <td className="py-3.5 px-3">
-                        {item.tags.length > 0 ? (
-                          <div className="flex flex-wrap gap-1">
-                            {item.tags.map((tag, idx) => (
-                              <span
-                                key={idx}
-                                className="px-2 py-0.5 text-[10px] font-extrabold bg-[#2B7344] text-white rounded uppercase tracking-wider"
-                              >
-                                {tag}
-                              </span>
-                            ))}
-                          </div>
-                        ) : null}
-                      </td>
-
-                      {/* Source */}
-                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400">
-                        {item.source}
-                      </td>
-
-                      {/* Client (Name + Email Subtext) */}
                       <td className="py-3.5 px-4">
-                        <div className="font-extrabold text-slate-900 dark:text-white">
+                        <div className="font-bold text-slate-900 dark:text-white">
                           {item.client.name}
                         </div>
-                        <div className="text-[11px] text-slate-400 dark:text-slate-500 font-normal truncate max-w-[140px]">
-                          {item.client.email}
-                        </div>
+                        {item.client.email && (
+                          <div className="text-[11px] text-slate-400 font-normal truncate max-w-[140px]">
+                            {item.client.email}
+                          </div>
+                        )}
                       </td>
 
-                      {/* Location */}
-                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400 truncate max-w-[120px]">
-                        {item.location || "-"}
+                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400 truncate max-w-[140px]">
+                        {item.location}
                       </td>
 
-                      {/* Type */}
                       <td className="py-3.5 px-3 text-slate-700 dark:text-slate-300">
                         {item.type}
                       </td>
 
-                      {/* Phone Number (Red Highlighted) */}
                       <td className="py-3.5 px-3">
                         <a
                           href={`tel:${item.phone}`}
-                          className="font-extrabold text-[#D31010] hover:underline"
+                          className="font-bold text-[#D31010] hover:underline"
                         >
                           {item.phone}
                         </a>
                       </td>
 
-                      {/* Created Date */}
+                      <td className="py-3.5 px-3 text-slate-600 dark:text-slate-400">
+                        {item.source}
+                      </td>
+
                       <td className="py-3.5 px-3 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {item.created}
                       </td>
 
-                      {/* Modified Date */}
-                      <td className="py-3.5 px-3 text-[11px] text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                        {item.modified}
+                      <td className="py-3.5 px-4 text-right">
+                        <button
+                          onClick={() => handleConvertToJob(item)}
+                          disabled={isConverting}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-[#D31010] hover:bg-[#b00d0d] text-white text-xs font-bold rounded-lg shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                          title="Convert this lead into a scheduled Job"
+                        >
+                          <Briefcase className="w-3.5 h-3.5" />
+                          <span>{isConverting ? "Converting..." : "Convert to Job"}</span>
+                        </button>
                       </td>
                     </tr>
                   );
@@ -573,38 +560,26 @@ export default function LeadsContent() {
           </table>
         </div>
 
-        {/* Table Footer Pagination Bar */}
         <div className="p-3 sm:p-4 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
-          <span>Showing 3 of 12</span>
+          <span>Showing {filteredLeads.length} of {leads.length} leads</span>
 
-          {/* Pagination Controls */}
           <div className="flex items-center gap-1.5">
             <button
               disabled={currentPage === 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            {[1, 2, 3].map((num) => (
-              <button
-                key={num}
-                onClick={() => setCurrentPage(num)}
-                className={`w-7 h-7 rounded-lg text-xs font-extrabold flex items-center justify-center transition-all ${
-                  currentPage === num
-                    ? "bg-[#D31010] text-white shadow-sm"
-                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
-                }`}
-              >
-                {num}
-              </button>
-            ))}
+            <span className="px-2 font-bold text-slate-700 dark:text-slate-300">
+              {currentPage}
+            </span>
 
             <button
-              disabled={currentPage === 3}
-              onClick={() => setCurrentPage((p) => Math.min(3, p + 1))}
-              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors"
+              disabled={currentPage >= Math.ceil(filteredLeads.length / rowsPerPage) || filteredLeads.length === 0}
+              onClick={() => setCurrentPage((p) => p + 1)}
+              className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 hover:bg-slate-100 dark:hover:bg-slate-800 disabled:opacity-40 transition-colors cursor-pointer"
             >
               <ChevronRight className="w-4 h-4" />
             </button>

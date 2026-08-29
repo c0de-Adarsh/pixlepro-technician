@@ -99,20 +99,47 @@ export default function InvoiceDetailContent() {
 
   const fetchInvoiceDetails = async () => {
     try {
-      const res = await Api("GET", `api/events/${id}`, null, router);
+      let res = await Api("GET", `api/invoices/${id}`, null, router);
+      if (!res || !res.data) {
+        res = await Api("GET", `api/events/${id}`, null, router);
+      }
       const data = res?.data || res || {};
       if (data) {
+        if (data.invoice_number) setInvoiceId(String(data.invoice_number));
         if (data.client_name) setClientName(data.client_name);
         if (data.company_name) setCompanyName(data.company_name);
         if (data.phone) {
           setPhone(data.phone);
           setSendPhone(data.phone);
         }
-        if (data.email) {
-          setEmail(data.email);
-          setSendTo(data.email);
+        if (data.client_email || data.email) {
+          const mail = data.client_email || data.email;
+          setEmail(mail);
+          setSendTo(mail);
         }
-        if (data.title) setInvoiceName(data.title.split(" - ")[0] || data.title);
+        if (data.invoice_name || data.title) {
+          setInvoiceName(data.invoice_name || data.title.split(" - ")[0] || data.title);
+        }
+        if (data.job_id) setJobId(String(data.job_id));
+        if (data.notes || data.description) setNotesText(data.notes || data.description || "");
+        if (data.tax_rate !== undefined) setTaxRate(Number(data.tax_rate));
+        if (data.sent_status) setSentStatus(data.sent_status);
+        if (Array.isArray(data.payments) && data.payments.length > 0) {
+          setPaymentsList(data.payments);
+        }
+        if (Array.isArray(data.line_items) && data.line_items.length > 0) {
+          setLineItems(
+            data.line_items.map((it, idx) => ({
+              id: it._id || it.id || "item_" + idx,
+              name: it.name || "",
+              qty: Number(it.qty) || 1,
+              price: Number(it.price) || 0,
+              cost: Number(it.cost) || 0,
+              taxable: it.taxable !== false,
+              description: it.description || "",
+            }))
+          );
+        }
       }
     } catch (err) {
       console.error(err);
@@ -149,9 +176,18 @@ export default function InvoiceDetailContent() {
     toast.success(`Added "${pb.name}" to invoice`);
   };
 
-  const handleAddPayment = () => {
+  const handleAddPayment = async () => {
     const amt = Number(payAmount);
     if (!amt || amt <= 0) return;
+    try {
+      await Api("POST", `api/invoices/${invoiceId || id}/payment`, {
+        amount: amt,
+        method: payType,
+        date: paidOn,
+        transaction_id: confirmCode,
+      }, router);
+    } catch (e) {}
+
     setPaymentsList((prev) => [
       ...prev,
       { id: "pay_" + Date.now(), amount: amt, method: payType, date: paidOn },
@@ -166,7 +202,7 @@ export default function InvoiceDetailContent() {
     toast.success(`Recorded payment of $${amt.toFixed(2)}`);
   };
 
-  const handleSendInvoice = () => {
+  const handleSendInvoice = async () => {
     if (sendTab === "email" && !sendTo) {
       toast.error("Please enter recipient email");
       return;
@@ -175,6 +211,13 @@ export default function InvoiceDetailContent() {
       toast.error("Please enter recipient phone");
       return;
     }
+    try {
+      await Api("POST", `api/invoices/${invoiceId || id}/send`, {
+        sendTo,
+        sendPhone,
+      }, router);
+    } catch (e) {}
+
     setSentStatus("Yes");
     setIsSendPanelOpen(false);
     toast.success(sendTab === "email" ? "Invoice email sent!" : "Invoice SMS sent!");

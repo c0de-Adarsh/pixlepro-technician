@@ -59,7 +59,7 @@ export default function SettingsContent() {
           id: "schedule",
           title: "Schedule Settings",
           icon: Calendar,
-          onClick: () => router.push("/schedule"),
+          onClick: () => router.push("/settings/schedule"),
         },
         {
           id: "lead_status",
@@ -153,7 +153,7 @@ export default function SettingsContent() {
           id: "taxes",
           title: "Taxes",
           icon: Percent,
-          onClick: () => toast.success("Opening Taxes..."),
+          onClick: () => router.push("/settings/taxes"),
         },
       ],
     },

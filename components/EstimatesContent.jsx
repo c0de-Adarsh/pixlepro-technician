@@ -32,6 +32,12 @@ export default function EstimatesContent() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
+  useEffect(() => {
+    if (router.query.create === "true") {
+      setIsAddModalOpen(true);
+    }
+  }, [router.query]);
+
   const [estimates, setEstimates] = useState([
     {
       id: "est_1",

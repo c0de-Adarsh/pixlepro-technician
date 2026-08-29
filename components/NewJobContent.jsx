@@ -27,6 +27,7 @@ import AddAdGroupModal from "./AddAdGroupModal";
 
 export default function NewJobContent() {
   const router = useRouter();
+  const isLead = router.pathname.includes("/leads") || router.query.type === "lead";
 
   const [clientName, setClientName] = useState("");
   const [companyName, setCompanyName] = useState("");
@@ -53,6 +54,21 @@ export default function NewJobContent() {
   const [isAddJobTypeModalOpen, setIsAddJobTypeModalOpen] = useState(false);
   const [isAddAdGroupModalOpen, setIsAddAdGroupModalOpen] = useState(false);
 
+  const [jobType, setJobType] = useState("");
+  const [jobSource, setJobSource] = useState("");
+  const [description, setDescription] = useState("");
+
+  const [isScheduled, setIsScheduled] = useState(true);
+  const [startDate, setStartDate] = useState("2026-08-20");
+  const [startTime, setStartTime] = useState("06:15 PM");
+  const [endDate, setEndDate] = useState("2026-08-20");
+  const [endTime, setEndTime] = useState("07:15 PM");
+  const [allDayEvent, setAllDayEvent] = useState(false);
+  const [assignedTech, setAssignedTech] = useState("");
+  const [availableTechs, setAvailableTechs] = useState(["PIXL TECHNICIAN", "CHARANPAL JAGGI", "Jarett", "James"]);
+  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   useEffect(() => {
     fetchClients();
     fetchServiceAreas();
@@ -60,6 +76,16 @@ export default function NewJobContent() {
     fetchJobSources();
     fetchTechs();
   }, [router]);
+
+  useEffect(() => {
+    if (router.query.date) {
+      setStartDate(String(router.query.date));
+      setEndDate(String(router.query.date));
+    }
+    if (router.query.time) {
+      setStartTime(String(router.query.time));
+    }
+  }, [router.query]);
 
   const fetchClients = async () => {
     try {
@@ -105,95 +131,66 @@ export default function NewJobContent() {
     try {
       const res = await Api("GET", "api/teams", null, router);
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      setAllTechs(list);
-    } catch (err) {
-      console.error("Error fetching teams:", err);
-    }
+      if (list.length > 0) {
+        const names = list.map((t) => t.name || `${t.first_name || ""} ${t.last_name || ""}`.trim()).filter(Boolean);
+        if (names.length > 0) setAvailableTechs(names);
+      }
+    } catch (err) {}
   };
-
-  const availableTechs = useMemo(() => {
-    if (allTechs.length > 0) {
-      return allTechs.map((t) => `${t.first_name || ""} ${t.last_name || ""}`.trim() || t.name);
-    }
-    return ["Charanpal Jaggi", "David Miller", "Arundeep"];
-  }, [allTechs]);
 
   const filteredClients = useMemo(() => {
     if (!clientName.trim()) return allClients;
-    const q = clientName.toLowerCase().trim();
+    const q = clientName.toLowerCase();
     return allClients.filter((c) => {
-      const fullName = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase();
+      const name = `${c.first_name || ""} ${c.last_name || ""}`.toLowerCase();
       const comp = (c.company_name || "").toLowerCase();
       const em = (c.email || "").toLowerCase();
-      const ph = (c.phone || "").toLowerCase();
-      const idStr = (c._id || "").toLowerCase();
-      return (
-        fullName.includes(q) ||
-        comp.includes(q) ||
-        em.includes(q) ||
-        ph.includes(q) ||
-        idStr.includes(q)
-      );
+      return name.includes(q) || comp.includes(q) || em.includes(q);
     });
-  }, [clientName, allClients]);
+  }, [allClients, clientName]);
 
   const handleSelectClientItem = (c) => {
     const fullName = `${c.first_name || ""} ${c.last_name || ""}`.trim();
-    setClientName(fullName);
+    setClientName(fullName || c.company_name || "Client");
     setCompanyName(c.company_name || "");
     setPhone(c.phone || "");
     setPhoneExt(c.phone_ext || "");
     setEmail(c.email || "");
-
     if (c.address) {
       setAddress(c.address.street || "");
       setUnit(c.address.unit || "");
       setCity(c.address.city || "");
       setState(c.address.region || "");
       setZip(c.address.postal_code || "");
-      if (c.address.country) setCountry(c.address.country);
+      setCountry(c.address.country || "United States");
     }
-
     setShowClientMenu(false);
-    toast.success(`Client "${fullName}" details autofilled!`);
+    toast.success(`Loaded client: ${fullName || c.company_name}`);
   };
-
-  const [jobType, setJobType] = useState("");
-  const [jobSource, setJobSource] = useState("");
-  const [description, setDescription] = useState("");
-
-  const [isScheduled, setIsScheduled] = useState(true);
-  const [startDate, setStartDate] = useState("2026-08-20");
-  const [startTime, setStartTime] = useState("07:45 AM");
-  const [endDate, setEndDate] = useState("2026-08-20");
-  const [endTime, setEndTime] = useState("08:45 AM");
-  const [allDayEvent, setAllDayEvent] = useState(false);
-  const [assignedTech, setAssignedTech] = useState("");
-
-  useEffect(() => {
-    if (router.query.date) {
-      setStartDate(String(router.query.date));
-      setEndDate(String(router.query.date));
-    }
-    if (router.query.time) {
-      setStartTime(String(router.query.time));
-    }
-  }, [router.query]);
-
-  const [isScheduleModalOpen, setIsScheduleModalOpen] = useState(false);
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!clientName.trim()) {
+      toast.error("Please enter a client name");
+      return;
+    }
+
     setIsSubmitting(true);
     try {
       const payload = {
-        title: jobType ? `${jobType} - ${clientName || "Client"}` : `Job for ${clientName || "Client"}`,
+        title: jobType ? `${jobType} - ${clientName}` : `${isLead ? "Lead" : "Job"} for ${clientName}`,
         client_name: clientName,
         company_name: companyName,
-        phone,
+        phone: phone + (phoneExt ? ` ext ${phoneExt}` : ""),
         email,
-        address: { street: address, unit, city, region: state, postal_code: zip, country },
+        address: {
+          street: address,
+          unit,
+          city,
+          region: state,
+          postal_code: zip,
+          country,
+        },
         service_area: serviceArea,
         job_type: jobType,
         job_source: jobSource,
@@ -201,7 +198,9 @@ export default function NewJobContent() {
         assigned_tech: assignedTech,
         assigned_techs: assignedTech ? [assignedTech] : ["PIXL TECHNICIAN"],
         team_member_names: assignedTech ? [assignedTech] : ["CHARANPAL JAGGI", "PIXL TECHNICIAN"],
-        status: "Submitted",
+        status: isLead ? "new" : "Submitted",
+        is_lead: Boolean(isLead),
+        lead_status: isLead ? "new" : undefined,
         schedule: {
           start_date: startDate,
           start_time: startTime,
@@ -214,11 +213,16 @@ export default function NewJobContent() {
       const res = await Api("POST", "api/events", payload, router);
       const createdObj = res?.data || res || {};
       const newId = createdObj._id || createdObj.id || "1065";
-      toast.success("New Job created successfully!");
-      router.push(`/jobs/${newId}`);
+      if (isLead) {
+        toast.success("New Lead created successfully!");
+        router.push("/leads");
+      } else {
+        toast.success("New Job created successfully!");
+        router.push(`/jobs/${newId}`);
+      }
     } catch (err) {
-      console.error("Error creating job:", err);
-      toast.error(err?.message || "Failed to create job");
+      console.error("Error creating record:", err);
+      toast.error(err?.message || "Failed to create record");
     } finally {
       setIsSubmitting(false);
     }
@@ -226,14 +230,13 @@ export default function NewJobContent() {
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto space-y-6 pt-6 sm:pt-8 text-slate-800 dark:text-slate-100">
-      {/* Page Header (Matching Screenshot 2: "New Job") */}
       <div className="flex items-center justify-between">
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-          New Job
+          {isLead ? "New Lead" : "New Job"}
         </h1>
         <button
           type="button"
-          onClick={() => router.push("/jobs")}
+          onClick={() => router.push(isLead ? "/leads" : "/jobs")}
           className="text-xs font-bold text-slate-500 hover:text-[#D31010] flex items-center gap-1 cursor-pointer"
         >
           <Minus className="w-4 h-4" />
@@ -745,7 +748,7 @@ export default function NewJobContent() {
         <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-200 dark:border-slate-800">
           <button
             type="button"
-            onClick={() => router.push("/jobs")}
+            onClick={() => router.push(isLead ? "/leads" : "/jobs")}
             className="px-6 py-2.5 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl text-xs font-extrabold transition-colors cursor-pointer"
           >
             Cancel
@@ -759,10 +762,10 @@ export default function NewJobContent() {
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin text-white" />
-                <span>Saving Job...</span>
+                <span>{isLead ? "Saving Lead..." : "Saving Job..."}</span>
               </>
             ) : (
-              <span>Save Job</span>
+              <span>{isLead ? "Save Lead" : "Save Job"}</span>
             )}
           </button>
         </div>

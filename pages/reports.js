@@ -1,7 +1,7 @@
 import React from "react";
 import Head from "next/head";
 import Layout from "../components/Layout";
-import AgingInvoicesContent from "../components/AgingInvoicesContent";
+import ReportsContent from "../components/ReportsContent";
 
 export default function ReportsPage() {
   return (
@@ -9,10 +9,10 @@ export default function ReportsPage() {
       {() => (
         <>
           <Head>
-            <title>Aging Invoices Report - PiXL Pro Admin</title>
-            <meta name="description" content="Aging Invoices Report & Overdue Analytics" />
+            <title>Reports - PiXL Pro Admin</title>
+            <meta name="description" content="PiXL Pro Reports & Analytics" />
           </Head>
-          <AgingInvoicesContent />
+          <ReportsContent />
         </>
       )}
     </Layout>

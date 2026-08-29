@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -22,6 +22,8 @@ import { Api } from "../services/service";
 import CreateChoiceModal from "./CreateChoiceModal";
 import AddEventDrawer from "./AddEventDrawer";
 import EditJobDrawer from "./EditJobDrawer";
+import AddTimeOffModal from "./AddTimeOffModal";
+import ViewTimeOffModal from "./ViewTimeOffModal";
 
 export default function ScheduleContent() {
   const router = useRouter();
@@ -29,12 +31,19 @@ export default function ScheduleContent() {
   const [currentDate, setCurrentDate] = useState(new Date(2026, 7, 20));
 
   const [jobsList, setJobsList] = useState([]);
+  const [timeOffList, setTimeOffList] = useState([]);
 
   const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
   const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [isEditJobDrawerOpen, setIsEditJobDrawerOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
+
+  const [isAddTimeOffOpen, setIsAddTimeOffOpen] = useState(false);
+  const [editingTimeOff, setEditingTimeOff] = useState(null);
+  const [selectedTimeOff, setSelectedTimeOff] = useState(null);
+  const [isViewTimeOffOpen, setIsViewTimeOffOpen] = useState(false);
+
   const [selectedSlotInfo, setSelectedSlotInfo] = useState("Thu, Aug 20 • 07:45 AM - 07:50 AM");
   const [selectedSlotDate, setSelectedSlotDate] = useState("2026-08-20");
   const [selectedSlotTime, setSelectedSlotTime] = useState("13:00");
@@ -102,8 +111,9 @@ export default function ScheduleContent() {
       const res = await Api("GET", "api/events", null, router);
       if (res) {
         const raw = Array.isArray(res.data) ? res.data : Array.isArray(res) ? res : [];
-        if (raw.length > 0) {
-          const mapped = raw.map((e) => {
+        const nonLeads = raw.filter((e) => !e.is_lead && e.type !== "lead" && e.status !== "lead");
+        if (nonLeads.length > 0) {
+          const mapped = nonLeads.map((e) => {
             const isEvent = Boolean(e.is_event || (!e.client_name && !e.job_type));
             const addr = e.address;
             const formattedAddr = typeof addr === "object"
@@ -143,8 +153,58 @@ export default function ScheduleContent() {
     }
   };
 
+  const [scheduleSettings, setScheduleSettings] = useState({
+    always_open: true,
+    open_on_holidays: true,
+    visible_start_hour: "5:00 am",
+    visible_end_hour: "7:00 pm",
+    show_done_jobs: false,
+    appointment_color_by: "Tech",
+    schedule_template: "{{tags}}{{client_name}} {{company_name}} {{job_type}} - {{job_address}}",
+    business_days: [],
+  });
+
+  const fetchScheduleSettings = async () => {
+    try {
+      const res = await Api("GET", "api/schedule-settings", null, router);
+      if (res && (res.data || res.success)) {
+        const data = res.data || res;
+        setScheduleSettings((prev) => ({ ...prev, ...data }));
+      }
+    } catch (err) {}
+  };
+
+  const fetchTimeOffs = async () => {
+    try {
+      const res = await Api("GET", "api/time-off", null, router);
+      if (res && res.success && Array.isArray(res.data)) {
+        setTimeOffList(res.data);
+      }
+    } catch (err) {
+      console.error("Error fetching time off:", err);
+    }
+  };
+
+  const handleDeleteTimeOff = async (to) => {
+    try {
+      const id = to._id || to.id;
+      const res = await Api("DELETE", `api/time-off/${id}`);
+      if (res && res.success) {
+        toast.success("Time off deleted");
+        setIsViewTimeOffOpen(false);
+        fetchTimeOffs();
+      } else {
+        toast.error(res?.message || "Failed to delete time off");
+      }
+    } catch (err) {
+      toast.error("Error deleting time off");
+    }
+  };
+
   useEffect(() => {
     fetchEvents();
+    fetchScheduleSettings();
+    fetchTimeOffs();
   }, [router]);
 
   const handlePrev = () => {
@@ -183,10 +243,41 @@ export default function ScheduleContent() {
     return `${months[currentDate.getMonth()]} ${currentDate.getFullYear()}`;
   };
 
-  const hours = [
-    "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM",
-    "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM"
-  ];
+  const hours = useMemo(() => {
+    const parseToHourNum = (str) => {
+      const clean = String(str || "").toLowerCase().trim();
+      let h = parseInt(clean, 10);
+      if (clean.includes("pm") && h < 12) h += 12;
+      if (clean.includes("am") && h === 12) h = 0;
+      return isNaN(h) ? 5 : h;
+    };
+
+    let startH = parseToHourNum(scheduleSettings.visible_start_hour || "5:00 am");
+    let endH = parseToHourNum(scheduleSettings.visible_end_hour || "7:00 pm");
+    if (endH < startH) endH = Math.min(23, startH + 12);
+
+    const list = [];
+    for (let h = startH; h <= endH; h++) {
+      const period = h >= 12 ? "PM" : "AM";
+      let h12 = h % 12;
+      if (h12 === 0) h12 = 12;
+      list.push(`${h12} ${period}`);
+    }
+    return list.length > 0
+      ? list
+      : [
+          "5 AM", "6 AM", "7 AM", "8 AM", "9 AM", "10 AM", "11 AM",
+          "12 PM", "1 PM", "2 PM", "3 PM", "4 PM", "5 PM", "6 PM", "7 PM"
+        ];
+  }, [scheduleSettings.visible_start_hour, scheduleSettings.visible_end_hour]);
+
+  const visibleJobs = useMemo(() => {
+    if (scheduleSettings.show_done_jobs) return jobsList;
+    return jobsList.filter((j) => {
+      const st = String(j.status || "").toLowerCase();
+      return st !== "done" && st !== "completed";
+    });
+  }, [jobsList, scheduleSettings.show_done_jobs]);
 
   const timelineHours = [
     "01 AM", "02 AM", "03 AM", "04 AM", "05 AM", "06 AM", "07 AM", "08 AM",
@@ -300,7 +391,7 @@ export default function ScheduleContent() {
   const monthGridDays = getMonthGrid(currentDate);
 
   const getJobsForCell = (hStr, wd) => {
-    return jobsList.filter((job) => {
+    return visibleJobs.filter((job) => {
       let jobHour = null;
       const rawTime = String(job.startTime || "").trim();
       if (rawTime) {
@@ -403,15 +494,212 @@ export default function ScheduleContent() {
     }
   };
 
+  const [draggedJobId, setDraggedJobId] = useState(null);
+
+  const formatJobCardText = (job) => {
+    if (job.isEvent) {
+      return `${job.title || "Event"}${job.notes ? ` - ${job.notes}` : ""}`;
+    }
+    const template = scheduleSettings.schedule_template || "{{tags}}{{client_name}} {{company_name}} {{job_type}} - {{job_address}}";
+    const cleanTags = Array.isArray(job.tags) ? job.tags.join(", ") : (job.tags || "");
+    const map = {
+      "{{job_id}}": job.jobId || job.id || "",
+      "{{client_name}}": job.clientName || "",
+      "{{first_name}}": (job.clientName || "").split(" ")[0] || "",
+      "{{last_name}}": (job.clientName || "").split(" ").slice(1).join(" ") || "",
+      "{{company_name}}": job.companyName || "",
+      "{{phone_number}}": job.phone || "",
+      "{{job_type}}": job.jobType || "Service",
+      "{{job_address}}": job.address || "",
+      "{{city}}": "",
+      "{{state}}": "",
+      "{{zip_code}}": "",
+      "{{tech_assigned}}": job.tech || "PIXL TECHNICIAN",
+      "{{tags}}": cleanTags ? `${cleanTags} ` : "",
+      "{{job_name}}": job.title || "",
+    };
+    let text = template;
+    Object.keys(map).forEach((k) => {
+      text = text.replaceAll(k, map[k]);
+    });
+    return text.trim() || `${job.clientName} ${job.companyName}`;
+  };
+
+  const getJobCardColor = (job) => {
+    if (job.isEvent) {
+      return "bg-slate-700 hover:bg-slate-800 text-white border-slate-400 hover:ring-2 hover:ring-slate-400";
+    }
+    const colorMode = scheduleSettings.appointment_color_by || "Tech";
+    if (colorMode === "Status") {
+      const st = String(job.status || "").toLowerCase();
+      if (st.includes("complete") || st.includes("done")) return "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-300";
+      if (st.includes("in progress")) return "bg-amber-600 hover:bg-amber-700 text-white border-amber-300";
+      if (st.includes("cancel")) return "bg-slate-600 hover:bg-slate-700 text-white border-slate-300";
+      return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 border-white/50";
+    }
+    if (colorMode === "Job type") {
+      const jt = String(job.jobType || "").toLowerCase();
+      if (jt.includes("install")) return "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-300";
+      if (jt.includes("repair")) return "bg-orange-600 hover:bg-orange-700 text-white border-orange-300";
+      return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 border-white/50";
+    }
+    return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 hover:ring-2 hover:ring-red-400 border-white/50";
+  };
+
+  const renderTimeOffPill = (to, dayObj) => {
+    const sStr = String(new Date(to.start_date).toISOString()).split("T")[0];
+    const eStr = to.end_date ? String(new Date(to.end_date).toISOString()).split("T")[0] : sStr;
+
+    const targetDate = dayObj?.dateStr;
+    const isStart = !targetDate || targetDate === sStr;
+    const isEnd = !targetDate || targetDate === eStr;
+    const isSun = dayObj?.day === "SUN" || dayObj?.day === "Sun";
+    const isSat = dayObj?.day === "SAT" || dayObj?.day === "Sat";
+
+    const isLeftCap = isStart || (isSun && targetDate > sStr);
+    const isRightCap = isEnd || (isSat && targetDate < eStr);
+    const showLabel = isLeftCap;
+
+    let marginClasses = "-mx-1 px-1.5";
+    let borderClasses = "border-y border-slate-300 dark:border-slate-600";
+    let roundedClasses = "rounded-none";
+
+    if (isLeftCap && isRightCap) {
+      marginClasses = "mx-0 px-2";
+      borderClasses = "border border-slate-300 dark:border-slate-600";
+      roundedClasses = "rounded-xl";
+    } else if (isLeftCap) {
+      marginClasses = "-mr-1 ml-0 pl-2 pr-1";
+      borderClasses = "border-y border-l border-slate-300 dark:border-slate-600";
+      roundedClasses = "rounded-l-xl";
+    } else if (isRightCap) {
+      marginClasses = "-ml-1 mr-0 pl-1 pr-2";
+      borderClasses = "border-y border-r border-slate-300 dark:border-slate-600";
+      roundedClasses = "rounded-r-xl";
+    }
+
+    return (
+      <div
+        key={to._id || to.id}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedTimeOff(to);
+          setIsViewTimeOffOpen(true);
+        }}
+        className={`h-7 flex items-center gap-1.5 py-1 bg-[repeating-linear-gradient(135deg,#e2e8f0,#e2e8f0_8px,#f1f5f9_8px,#f1f5f9_16px)] dark:bg-[repeating-linear-gradient(135deg,#334155,#334155_8px,#1e293b_8px,#1e293b_16px)] text-slate-900 dark:text-white text-[11px] font-extrabold cursor-pointer transition-all shadow-xs my-0.5 select-none overflow-hidden ${marginClasses} ${borderClasses} ${roundedClasses}`}
+        title={`${to.reason} - ${to.user_name}`}
+      >
+        <span className="w-2 h-2 rounded-full bg-slate-900 dark:bg-slate-100 flex-shrink-0" />
+        {showLabel && (
+          <span className="truncate whitespace-nowrap">
+            Time off | {to.user_name}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const renderMonthTimeOffBar = (to, cellObj) => {
+    const sStr = String(new Date(to.start_date).toISOString()).split("T")[0];
+    const eStr = to.end_date ? String(new Date(to.end_date).toISOString()).split("T")[0] : sStr;
+
+    const isStart = cellObj.dateStr === sStr;
+    const isEnd = cellObj.dateStr === eStr;
+    const isSunday = cellObj.day === "Sun";
+    const isSaturday = cellObj.day === "Sat";
+
+    const isLeftCap = isStart || (isSunday && cellObj.dateStr > sStr);
+    const isRightCap = isEnd || (isSaturday && cellObj.dateStr < eStr);
+    const showLabel = isStart || (isSunday && cellObj.dateStr > sStr);
+
+    let marginClasses = "-mx-2 px-1";
+    let borderClasses = "border-y border-slate-300 dark:border-slate-700";
+    let roundedClasses = "rounded-none";
+
+    if (isLeftCap && isRightCap) {
+      marginClasses = "mx-0 px-2";
+      borderClasses = "border border-slate-300 dark:border-slate-700";
+      roundedClasses = "rounded-md";
+    } else if (isLeftCap) {
+      marginClasses = "-mr-2 ml-0 pl-2 pr-1";
+      borderClasses = "border-y border-l border-slate-300 dark:border-slate-700";
+      roundedClasses = "rounded-l-md";
+    } else if (isRightCap) {
+      marginClasses = "-ml-2 mr-0 pl-1 pr-2";
+      borderClasses = "border-y border-r border-slate-300 dark:border-slate-700";
+      roundedClasses = "rounded-r-md";
+    }
+
+    return (
+      <div
+        key={to._id || to.id}
+        onClick={(e) => {
+          e.stopPropagation();
+          setSelectedTimeOff(to);
+          setIsViewTimeOffOpen(true);
+        }}
+        className={`h-6 flex items-center bg-[repeating-linear-gradient(135deg,#e2e8f0,#e2e8f0_8px,#f1f5f9_8px,#f1f5f9_16px)] dark:bg-[repeating-linear-gradient(135deg,#334155,#334155_8px,#1e293b_8px,#1e293b_16px)] text-slate-800 dark:text-slate-100 text-[11px] font-bold cursor-pointer transition-all shadow-xs my-1 select-none overflow-hidden ${marginClasses} ${borderClasses} ${roundedClasses}`}
+        title={`${to.reason} - ${to.user_name}`}
+      >
+        {showLabel && (
+          <span className="truncate whitespace-nowrap font-extrabold text-slate-900 dark:text-white pl-0.5">
+            Time off | {to.user_name}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const parseHourNumber = (str) => {
+    if (!str) return 0;
+    const s = String(str).toUpperCase().trim();
+    const match = s.match(/(\d+)(?::(\d+))?\s*(AM|PM)?/);
+    if (!match) return 0;
+    let hr = parseInt(match[1], 10);
+    const ampm = match[3];
+    if (ampm === "PM" && hr < 12) hr += 12;
+    if (ampm === "AM" && hr === 12) hr = 0;
+    return hr;
+  };
+
+  const getTimeOffsForCell = (h, dayObj) => {
+    if (!dayObj?.dateStr) return [];
+    return timeOffList.filter((to) => {
+      if (!to.start_date) return false;
+      const sStr = String(new Date(to.start_date).toISOString()).split("T")[0];
+      const eStr = to.end_date ? String(new Date(to.end_date).toISOString()).split("T")[0] : sStr;
+      if (dayObj.dateStr < sStr || dayObj.dateStr > eStr) return false;
+      if (to.is_all_day) return true;
+
+      const cellH = parseHourNumber(h);
+      const startH = parseHourNumber(to.start_time || "12:00 AM");
+      const endH = parseHourNumber(to.end_time || to.start_time || "12:15 AM");
+
+      if (dayObj.dateStr === sStr && cellH < startH) return false;
+      if (dayObj.dateStr === eStr && cellH > endH) return false;
+      return true;
+    });
+  };
+
   const renderJobPill = (job) => {
     const isEv = job.isEvent;
+    const isCurrentlyDragged = draggedJobId === (job._id || job.id);
     return (
       <div
         key={job.id}
         draggable
         onDragStart={(e) => {
+          setDraggedJobId(job._id || job.id);
           e.dataTransfer.setData("application/json", JSON.stringify(job));
           e.dataTransfer.effectAllowed = "move";
+          try {
+            const blankImg = new Image();
+            blankImg.src = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='1' height='1'></svg>";
+            e.dataTransfer.setDragImage(blankImg, 0, 0);
+          } catch (err) {}
+        }}
+        onDragEnd={() => {
+          setDraggedJobId(null);
         }}
         onClick={(e) => {
           e.stopPropagation();
@@ -422,16 +710,14 @@ export default function ScheduleContent() {
           }
         }}
         className={`p-2 rounded-xl text-[11px] font-bold shadow-md cursor-grab active:cursor-grabbing border-l-4 transition-all z-10 my-0.5 select-none ${
-          isEv
-            ? "bg-slate-700 hover:bg-slate-800 text-white border-slate-400 hover:ring-2 hover:ring-slate-400"
-            : "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 hover:ring-2 hover:ring-red-400 border-white/50"
-        }`}
+          isCurrentlyDragged ? "opacity-30 scale-95" : "opacity-100"
+        } ${getJobCardColor(job)}`}
       >
         <div className="font-extrabold text-white text-xs">
           {isEv ? "Event" : `Job ID: ${job.jobId}`}
         </div>
         <div className={`text-[10px] truncate ${isEv ? "text-slate-300 font-semibold" : "text-red-100"}`}>
-          {isEv ? `${job.title} ${job.notes ? `- ${job.notes}` : ""}` : `${job.clientName} ${job.companyName}`}
+          {formatJobCardText(job)}
         </div>
       </div>
     );
@@ -510,8 +796,8 @@ export default function ScheduleContent() {
             </button>
             <button
               type="button"
-              onClick={() => toast.success("Calendar settings")}
-              className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              onClick={() => router.push("/settings/schedule")}
+              className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               <SlidersHorizontal className="w-4 h-4" />
             </button>
@@ -572,7 +858,8 @@ export default function ScheduleContent() {
                     <div className="w-20 p-2 text-right text-[11px] font-bold text-slate-400 border-r border-slate-200 dark:border-slate-800 select-none">
                       {h}
                     </div>
-                    <div className="flex-1 relative p-1.5">
+                    <div className="flex-1 relative p-1.5 space-y-1">
+                      {getTimeOffsForCell(h, dayCellObj).map((to) => renderTimeOffPill(to, dayCellObj))}
                       {cellJobs.map(renderJobPill)}
                     </div>
                   </div>
@@ -613,6 +900,7 @@ export default function ScheduleContent() {
                   </div>
                   {weekDays.map((wd, dIdx) => {
                     const cellJobs = getJobsForCell(h, wd);
+                    const cellTimeOffs = getTimeOffsForCell(h, wd);
                     return (
                       <div
                         key={dIdx}
@@ -637,8 +925,9 @@ export default function ScheduleContent() {
                             handleJobDrop(item, wd.date, h, wd.dateStr);
                           } catch (err) {}
                         }}
-                        className="border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 p-1 relative hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
+                        className="border-r border-slate-100 dark:border-slate-800/60 last:border-r-0 p-1 relative hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer space-y-1"
                       >
+                        {cellTimeOffs.map((to) => renderTimeOffPill(to, wd))}
                         {cellJobs.map(renderJobPill)}
                       </div>
                     );
@@ -666,10 +955,16 @@ export default function ScheduleContent() {
               {monthGridDays.map((wRow, rIdx) => (
                 <div key={rIdx} className="grid grid-cols-7 min-h-[95px]">
                   {wRow.map((cellObj, cIdx) => {
-                    const dayJobs = jobsList.filter((job) => {
+                    const dayJobs = visibleJobs.filter((job) => {
                       if (!job.startDate || cellObj.isOutside) return false;
                       const cleanStr = String(job.startDate).split("T")[0];
                       return cleanStr === cellObj.dateStr;
+                    });
+                    const dayTimeOffs = timeOffList.filter((to) => {
+                      if (!to.start_date || cellObj.isOutside) return false;
+                      const sStr = String(new Date(to.start_date).toISOString()).split("T")[0];
+                      const eStr = to.end_date ? String(new Date(to.end_date).toISOString()).split("T")[0] : sStr;
+                      return cellObj.dateStr >= sStr && cellObj.dateStr <= eStr;
                     });
                     return (
                       <div
@@ -712,6 +1007,12 @@ export default function ScheduleContent() {
 
                         {dayJobs.length > 0 && (
                           <div className="mt-1 space-y-1">{dayJobs.map(renderJobPill)}</div>
+                        )}
+
+                        {dayTimeOffs.length > 0 && (
+                          <div className="mt-1 space-y-0.5">
+                            {dayTimeOffs.map((to) => renderMonthTimeOffBar(to, cellObj))}
+                          </div>
                         )}
                       </div>
                     );
@@ -838,10 +1139,46 @@ export default function ScheduleContent() {
         onClose={() => setIsChoiceModalOpen(false)}
         slotInfo={selectedSlotInfo}
         onContinueJob={() => router.push(`/jobs/new?date=${selectedSlotDate}&time=${selectedSlotTime12}`)}
+        onContinueLead={() => router.push(`/leads?create=true&date=${selectedSlotDate}&time=${selectedSlotTime12}`)}
         onContinueEvent={() => {
           setEditingEvent(null);
           setIsEventDrawerOpen(true);
         }}
+        onContinueTimeOff={() => {
+          setEditingTimeOff(null);
+          setIsAddTimeOffOpen(true);
+        }}
+      />
+
+      {/* Add / Edit Time Off Modal */}
+      <AddTimeOffModal
+        isOpen={isAddTimeOffOpen}
+        onClose={() => {
+          setIsAddTimeOffOpen(false);
+          setEditingTimeOff(null);
+        }}
+        initialDate={selectedSlotDate}
+        initialTime={selectedSlotTime12}
+        timeOffToEdit={editingTimeOff}
+        onSaved={() => {
+          fetchTimeOffs();
+        }}
+      />
+
+      {/* View Time Off Details Popover Modal */}
+      <ViewTimeOffModal
+        isOpen={isViewTimeOffOpen}
+        onClose={() => {
+          setIsViewTimeOffOpen(false);
+          setSelectedTimeOff(null);
+        }}
+        timeOff={selectedTimeOff}
+        onEdit={(to) => {
+          setIsViewTimeOffOpen(false);
+          setEditingTimeOff(to);
+          setIsAddTimeOffOpen(true);
+        }}
+        onDelete={handleDeleteTimeOff}
       />
 
       {/* Side Event Drawer */}
