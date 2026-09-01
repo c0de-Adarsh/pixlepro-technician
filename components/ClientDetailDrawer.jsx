@@ -22,12 +22,19 @@ import {
 import { goeyToast as toast } from "goey-toast";
 import { Api } from "../services/service";
 import AddAdditionalContactModal from "./AddAdditionalContactModal";
+import AddEquipmentModal from "./AddEquipmentModal";
+import EquipmentHistoryModal from "./EquipmentHistoryModal";
 
 export default function ClientDetailDrawer({ isOpen, onClose, client }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("about");
   const [isAddContactModalOpen, setIsAddContactModalOpen] = useState(false);
   const [historyFilter, setHistoryFilter] = useState("All");
+
+  const [clientEquipment, setClientEquipment] = useState([]);
+  const [isAddEquipmentModalOpen, setIsAddEquipmentModalOpen] = useState(false);
+  const [editingEquipment, setEditingEquipment] = useState(null);
+  const [historyModalEquipment, setHistoryModalEquipment] = useState(null);
 
   const [isAddressesOpen, setIsAddressesOpen] = useState(false);
   const [isAdditionalContactsOpen, setIsAdditionalContactsOpen] = useState(true);
@@ -76,10 +83,24 @@ export default function ClientDetailDrawer({ isOpen, onClose, client }) {
         setAllAvailableTags([]);
       }
     };
+
+    const fetchClientEquipment = async () => {
+      const targetName = client?.clientName || client?.name || clientName;
+      if (!targetName) return;
+      try {
+        const res = await Api("GET", `api/equipment?client_name=${encodeURIComponent(targetName)}`);
+        const data = Array.isArray(res?.data) ? res.data : [];
+        setClientEquipment(data);
+      } catch (e) {
+        setClientEquipment([]);
+      }
+    };
+
     if (isOpen) {
       fetchTags();
+      fetchClientEquipment();
     }
-  }, [isOpen, router]);
+  }, [isOpen, client, router]);
 
   useEffect(() => {
     if (client) {
@@ -172,55 +193,37 @@ export default function ClientDetailDrawer({ isOpen, onClose, client }) {
   };
 
   const historyItems = useMemo(() => {
-    return [
-      {
-        id: "hist_1",
-        type: "Estimates",
-        title: "Estimate ID: 1065-2 created",
-        date: "Aug 25 2026 • 5:08 AM • PIXL TECHNICIAN",
-        icon: FileEdit,
-        iconBg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
-      },
-      {
-        id: "hist_2",
-        type: "Invoices",
-        title: "Invoice ID: 885 created",
-        date: "Aug 25 2026 • 5:01 AM • PIXL TECHNICIAN",
-        icon: FileText,
-        iconBg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
-      },
-      {
-        id: "hist_3",
-        type: "Estimates",
-        title: "Estimate ID: 1065-1 created",
-        date: "Aug 25 2026 • 5:00 AM • PIXL TECHNICIAN",
-        icon: FileEdit,
-        iconBg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
-      },
-      {
-        id: "hist_4",
+    const items = [];
+    if (jobId) {
+      items.push({
+        id: `job_${jobId}`,
         type: "Jobs",
-        title: `Job ID: ${jobId} - ${jobTitle} created`,
+        title: `Job ID: ${jobId}${jobTitle ? ` - ${jobTitle}` : ""} created`,
         details: [
-          `Scheduled: ${scheduled}`,
-          `Address: ${address}`,
-          `Assigned tech: ${tech}`,
-        ],
-        date: `Aug 25 2026 • 5:00 AM • ${tech}`,
+          scheduled ? `Scheduled: ${scheduled}` : null,
+          address ? `Address: ${address}` : null,
+          tech ? `Assigned tech: ${tech}` : null,
+        ].filter(Boolean),
+        date: client?.createdAt ? new Date(client.createdAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "Recent",
         icon: Wrench,
         iconBg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
-      },
-      {
-        id: "hist_5",
+      });
+    }
+
+    if (clientId || clientName) {
+      items.push({
+        id: `client_${clientId || "reg"}`,
         type: "Clients",
-        title: `Client ID: ${clientId} created`,
-        details: [`Source: ${source}`],
-        date: "Aug 25 2026 • 4:03 AM • PIXL TECHNICIAN",
+        title: `Client Profile ${clientName || clientId} created`,
+        details: [source ? `Source: ${source}` : null].filter(Boolean),
+        date: client?.createdAt ? new Date(client.createdAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" }) : "Recent",
         icon: User,
         iconBg: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300",
-      },
-    ];
-  }, [jobId, jobTitle, scheduled, address, tech, clientId, source]);
+      });
+    }
+
+    return items;
+  }, [jobId, jobTitle, scheduled, address, tech, clientId, clientName, source, client]);
 
   const filteredHistory = useMemo(() => {
     if (!historyFilter || historyFilter === "All") return historyItems;
@@ -282,6 +285,7 @@ export default function ClientDetailDrawer({ isOpen, onClose, client }) {
                 {[
                   { id: "about", label: "About" },
                   { id: "history", label: "History" },
+                  { id: "equipment", label: "Equipment" },
                   { id: "notes", label: "Notes" },
                 ].map((tab) => {
                   const isActive = activeTab === tab.id;
@@ -767,6 +771,105 @@ export default function ClientDetailDrawer({ isOpen, onClose, client }) {
                   )}
                 </div>
               )}
+              {/* TAB: EQUIPMENT */}
+              {activeTab === "equipment" && (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+                      CLIENT EQUIPMENT ({clientEquipment.length})
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditingEquipment(null);
+                        setIsAddEquipmentModalOpen(true);
+                      }}
+                      className="text-xs font-bold text-[#D31010] hover:text-[#b00d0d] flex items-center gap-1 cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>Add new</span>
+                    </button>
+                  </div>
+
+                  {clientEquipment.length > 0 ? (
+                    <div className="space-y-3">
+                      {clientEquipment.map((eq) => {
+                        const isLaborActive = eq.labor_warranty_exp && new Date(eq.labor_warranty_exp) >= new Date();
+                        return (
+                          <div
+                            key={eq._id}
+                            className="p-3.5 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <h4 className="text-xs font-bold text-slate-900 dark:text-white">
+                                  {eq.name}
+                                </h4>
+                                <div className="text-[11px] text-slate-400 font-mono">
+                                  Model: {eq.model_number} • Serial: {eq.serial_number || "N/A"}
+                                </div>
+                              </div>
+                              <span className={`px-2 py-0.5 text-[9px] font-bold rounded-full ${
+                                isLaborActive ? "bg-emerald-100 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300" : "bg-slate-100 dark:bg-slate-800 text-slate-400"
+                              }`}>
+                                {isLaborActive ? "Warranty Active" : "Expired"}
+                              </span>
+                            </div>
+
+                            {eq.location_in_property && (
+                              <div className="text-[11px] text-slate-500 flex items-center gap-1">
+                                <MapPin className="w-3 h-3 text-slate-400" />
+                                <span>{eq.location_in_property}</span>
+                              </div>
+                            )}
+
+                            <div className="flex items-center justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80 text-[11px]">
+                              <button
+                                type="button"
+                                onClick={() => setHistoryModalEquipment(eq)}
+                                className="text-blue-600 dark:text-blue-400 font-bold hover:underline flex items-center gap-1 cursor-pointer"
+                              >
+                                <Wrench className="w-3 h-3" />
+                                <span>History ({eq.history?.length || 0})</span>
+                              </button>
+
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setEditingEquipment(eq);
+                                  setIsAddEquipmentModalOpen(true);
+                                }}
+                                className="text-slate-500 hover:text-slate-900 dark:hover:text-white text-xs font-semibold cursor-pointer"
+                              >
+                                Edit
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="py-12 flex flex-col items-center justify-center text-center space-y-3">
+                      <div className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                        <Wrench className="w-6 h-6" />
+                      </div>
+                      <p className="text-xs text-slate-400 max-w-[220px]">
+                        No equipment registered for this client.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setEditingEquipment(null);
+                          setIsAddEquipmentModalOpen(true);
+                        }}
+                        className="px-4 py-1.5 bg-[#D31010] text-white text-xs font-bold rounded-lg cursor-pointer"
+                      >
+                        + Add Equipment
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </motion.div>
 
@@ -774,6 +877,34 @@ export default function ClientDetailDrawer({ isOpen, onClose, client }) {
             isOpen={isAddContactModalOpen}
             onClose={() => setIsAddContactModalOpen(false)}
             onAdded={handleContactAdded}
+          />
+
+          <AddEquipmentModal
+            isOpen={isAddEquipmentModalOpen}
+            initialData={editingEquipment}
+            clientContext={{ name: clientName, phone, email, address }}
+            onClose={() => {
+              setIsAddEquipmentModalOpen(false);
+              setEditingEquipment(null);
+            }}
+            onSaved={async () => {
+              try {
+                const res = await Api("GET", `api/equipment?client_name=${encodeURIComponent(clientName)}`);
+                setClientEquipment(Array.isArray(res?.data) ? res.data : []);
+              } catch (e) {}
+            }}
+          />
+
+          <EquipmentHistoryModal
+            isOpen={Boolean(historyModalEquipment)}
+            equipment={historyModalEquipment}
+            onClose={() => setHistoryModalEquipment(null)}
+            onHistoryUpdated={async () => {
+              try {
+                const res = await Api("GET", `api/equipment?client_name=${encodeURIComponent(clientName)}`);
+                setClientEquipment(Array.isArray(res?.data) ? res.data : []);
+              } catch (e) {}
+            }}
           />
         </div>
       )}

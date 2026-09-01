@@ -56,15 +56,7 @@ export default function TimesheetsContent() {
   const [laborCost, setLaborCost] = useState("0.00");
   const [isEditingCost, setIsEditingCost] = useState(false);
 
-  const availableTeamUsers = [
-    "PIXL TECHNICIAN",
-    "Jarett",
-    "James",
-    "Earl",
-    "ClearPath Audio Visual",
-    "charanpal jaggi",
-    "Adarsh Tech",
-  ];
+  const [availableTeamUsers, setAvailableTeamUsers] = useState(["PIXL TECHNICIAN"]);
 
   const fetchTimesheets = async () => {
     try {
@@ -80,8 +72,20 @@ export default function TimesheetsContent() {
     }
   };
 
+  const fetchTeamMembers = async () => {
+    try {
+      const res = await Api("GET", "api/teams", null, router);
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      const names = list.map((t) => t.name || `${t.first_name || ""} ${t.last_name || ""}`.trim()).filter(Boolean);
+      if (names.length > 0) {
+        setAvailableTeamUsers(Array.from(new Set(["PIXL TECHNICIAN", ...names])));
+      }
+    } catch (e) {}
+  };
+
   useEffect(() => {
     fetchTimesheets();
+    fetchTeamMembers();
   }, []);
 
   const toggleUserExpanded = (userName) => {

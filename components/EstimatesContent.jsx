@@ -38,89 +38,36 @@ export default function EstimatesContent() {
     }
   }, [router.query]);
 
-  const [estimates, setEstimates] = useState([
-    {
-      id: "est_1",
-      estimateNumber: "EST-2024-1042",
-      name: "Full HVAC Replacement",
-      clientName: "Sarah Jenkins",
-      clientEmail: "sarah.j@example.com",
-      createdDate: "Oct 24, 2024",
-      createdBy: "Mike R.",
-      amount: 8450.0,
-      status: "PENDING",
-      sourceJob: "JOB-889",
-      depositDue: "$2,000.00",
-    },
-    {
-      id: "est_2",
-      estimateNumber: "EST-2024-1041",
-      name: "Commercial Server Rack Install",
-      clientName: "TechCorp Inc.",
-      clientEmail: "billing@techcorp.com",
-      createdDate: "Oct 22, 2024",
-      createdBy: "Alex T.",
-      amount: 12200.5,
-      status: "APPROVED",
-      sourceJob: "JOB-885",
-      depositDue: "$6,100.25",
-    },
-    {
-      id: "est_3",
-      estimateNumber: "EST-2024-1040",
-      name: "Annual Maintenance Contract",
-      clientName: "Riverwood Estates",
-      clientEmail: "hoa@riverwood.org",
-      createdDate: "Oct 20, 2024",
-      createdBy: "Mike R.",
-      amount: 4500.0,
-      status: "UNSENT",
-      sourceJob: "No linked job",
-      depositDue: "-",
-    },
-    {
-      id: "est_4",
-      estimateNumber: "EST-2024-1039",
-      name: "Emergency Leak Repair",
-      clientName: "David Chen",
-      clientEmail: "d.chen@email.com",
-      createdDate: "Oct 19, 2024",
-      createdBy: "System",
-      amount: 850.0,
-      status: "WON",
-      sourceJob: "JOB-882",
-      depositDue: "Paid",
-    },
-  ]);
+  const [estimates, setEstimates] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     const fetchEstimates = async () => {
+      setLoading(true);
       try {
         const res = await Api("GET", "api/estimates", null, router);
         const dataArray = res?.data || (Array.isArray(res) ? res : null);
-        if (isMounted && dataArray && Array.isArray(dataArray) && dataArray.length > 0) {
+        if (isMounted && dataArray && Array.isArray(dataArray)) {
           const mapped = dataArray.map((e) => ({
             id: e._id || e.id,
-            estimateNumber: e.estimate_number || "EST-2024-1000",
-            name: e.name,
+            estimateNumber: e.estimate_number || "EST-" + String(e._id || "").slice(-4),
+            name: e.name || "Estimate",
             clientName: e.client_name || "Client",
             clientEmail: e.client_email || "client@example.com",
             createdDate: e.createdAt ? new Date(e.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Recent",
-            createdBy: e.created_by_name || "Mike R.",
+            createdBy: e.created_by_name || "System",
             amount: e.amount || 0,
             status: e.status || "PENDING",
             sourceJob: e.source_job || "No linked job",
             depositDue: e.deposit_due || "-",
           }));
-
-          setEstimates((prev) => {
-            const existingIds = new Set(prev.map((item) => item.id));
-            const newItems = mapped.filter((item) => !existingIds.has(item.id));
-            return [...newItems, ...prev];
-          });
+          setEstimates(mapped);
         }
       } catch (err) {
+        console.error("Error fetching estimates:", err);
+      } finally {
+        if (isMounted) setLoading(false);
       }
     };
     fetchEstimates();

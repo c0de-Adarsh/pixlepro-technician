@@ -12,25 +12,16 @@ export default function AddTimeOffModal({
   timeOffToEdit,
   onSaved,
 }) {
-  const [selectedUser, setSelectedUser] = useState("charanpal jaggi");
+  const [selectedUser, setSelectedUser] = useState("");
   const [reason, setReason] = useState("Personal");
-  const [startDate, setStartDate] = useState("2026-09-13");
+  const [startDate, setStartDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [startTime, setStartTime] = useState("12:00 AM");
-  const [endDate, setEndDate] = useState("2026-09-13");
+  const [endDate, setEndDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [endTime, setEndTime] = useState("12:15 AM");
   const [isAllDay, setIsAllDay] = useState(false);
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const teamUsers = [
-    "charanpal jaggi",
-    "PIXL TECHNICIAN",
-    "Jarett",
-    "James",
-    "Earl",
-    "ClearPath Audio Visual",
-    "Adarsh Tech",
-  ];
+  const [teamUsers, setTeamUsers] = useState(["PIXL TECHNICIAN"]);
 
   const reasonOptions = [
     "Personal",
@@ -70,8 +61,20 @@ export default function AddTimeOffModal({
   ];
 
   useEffect(() => {
+    const fetchTeams = async () => {
+      try {
+        const res = await Api("GET", "api/teams");
+        const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+        const names = list.map((t) => t.name || `${t.first_name || ""} ${t.last_name || ""}`.trim()).filter(Boolean);
+        if (names.length > 0) {
+          setTeamUsers(Array.from(new Set(["PIXL TECHNICIAN", ...names])));
+        }
+      } catch (e) {}
+    };
+    if (isOpen) fetchTeams();
+
     if (timeOffToEdit) {
-      setSelectedUser(timeOffToEdit.user_name || "charanpal jaggi");
+      setSelectedUser(timeOffToEdit.user_name || "PIXL TECHNICIAN");
       setReason(timeOffToEdit.reason || "Personal");
       if (timeOffToEdit.start_date) {
         setStartDate(new Date(timeOffToEdit.start_date).toISOString().split("T")[0]);
@@ -84,9 +87,9 @@ export default function AddTimeOffModal({
       setIsAllDay(Boolean(timeOffToEdit.is_all_day));
       setNotes(timeOffToEdit.notes || "");
     } else {
-      setSelectedUser("charanpal jaggi");
+      setSelectedUser("PIXL TECHNICIAN");
       setReason("Personal");
-      const d = initialDate || "2026-09-13";
+      const d = initialDate || new Date().toISOString().split("T")[0];
       setStartDate(d);
       setEndDate(d);
       setStartTime(initialTime || "12:00 AM");

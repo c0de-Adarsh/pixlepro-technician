@@ -23,28 +23,39 @@ import {
   ChevronUp,
 } from "lucide-react";
 import { goeyToast as toast } from "goey-toast";
+import DocumentSignatureModal from "./DocumentSignatureModal";
+import NotFoundState from "./NotFoundState";
+import { Loader2 } from "lucide-react";
 import { Api } from "../services/service";
 
 export default function InvoiceDetailContent() {
   const router = useRouter();
   const { id } = router.query;
 
+  const [invoiceData, setInvoiceData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
   const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
   const previewIframeRef = React.useRef(null);
-  const [invoiceName, setInvoiceName] = useState("test");
+  const [invoiceName, setInvoiceName] = useState("");
   const [isEditingInvoiceName, setIsEditingInvoiceName] = useState(false);
   const [sentStatus, setSentStatus] = useState("No");
 
-  const [clientName, setClientName] = useState("adarsh jais");
-  const [companyName, setCompanyName] = useState("rockstar");
-  const [phone, setPhone] = useState("(909) 090-9090");
-  const [email, setEmail] = useState("mikaldon04@gmail.com");
-  const [streetAddress, setStreetAddress] = useState("Lucknow Unit 123 Main Street");
-  const [cityStateZip, setCityStateZip] = useState("Lucknow, New York 226017");
+  const [clientName, setClientName] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [phone, setPhone] = useState("");
+  const [email, setEmail] = useState("");
+  const [streetAddress, setStreetAddress] = useState("");
+  const [cityStateZip, setCityStateZip] = useState("");
 
-  const [jobId, setJobId] = useState("1065");
-  const [invoiceId, setInvoiceId] = useState("885");
+  const [jobId, setJobId] = useState("");
+  const [invoiceId, setInvoiceId] = useState("");
+  const [signatureData, setSignatureData] = useState("");
+  const [signerName, setSignerName] = useState("");
+  const [signedAt, setSignedAt] = useState(null);
+  const [signatureStatus, setSignatureStatus] = useState("unassigned");
+  const [isSignatureModalOpen, setIsSignatureModalOpen] = useState(false);
 
   const [lineItems, setLineItems] = useState([]);
   const [isAddItemModalOpen, setIsAddItemModalOpen] = useState(false);
@@ -90,59 +101,138 @@ export default function InvoiceDetailContent() {
   });
 
   useEffect(() => {
+    console.log("[INVOICE DETAIL DEBUG] Component mounted with id:", id, "router.isReady:", router.isReady);
     if (id) {
       setInvoiceId(String(id));
       fetchInvoiceDetails();
       fetchPriceBook();
     }
-  }, [id]);
+  }, [id, router.isReady]);
 
   const fetchInvoiceDetails = async () => {
+    console.log("[INVOICE DETAIL DEBUG] fetchInvoiceDetails started for ID:", id);
+    setLoading(true);
     try {
-      let res = await Api("GET", `api/invoices/${id}`, null, router);
-      if (!res || !res.data) {
-        res = await Api("GET", `api/events/${id}`, null, router);
+      let data = null;
+      try {
+        console.log(`[INVOICE DETAIL DEBUG] Requesting GET api/invoices/${id}`);
+        const res = await Api("GET", `api/invoices/${id}`, null, router);
+        console.log("[INVOICE DETAIL DEBUG] GET api/invoices/:id response:", res);
+        data = res?.data || (res && res._id ? res : null);
+      } catch (e) {
+        console.warn("[INVOICE DETAIL DEBUG] Error calling api/invoices/:id:", e);
       }
-      const data = res?.data || res || {};
+
+      if (!data) {
+        try {
+          console.log(`[INVOICE DETAIL DEBUG] Invoice not found directly, trying GET api/events/${id}`);
+          const resEvent = await Api("GET", `api/events/${id}`, null, router);
+          console.log("[INVOICE DETAIL DEBUG] GET api/events/:id response:", resEvent);
+          const ev = resEvent?.data || (resEvent && resEvent._id ? resEvent : null);
+          if (ev) {
+            const shortInv = String(ev._id).slice(-3);
+            const shortJob = String(ev._id).slice(-4);
+            const sub = Number(ev.subtotal || ev.total_amount || 189.99);
+            const rate = Number(ev.tax_rate !== undefined ? ev.tax_rate : 5.0);
+            const tax = Number(ev.tax_amount || (sub * (rate / 100)).toFixed(2));
+            const tot = Number(ev.total_amount || (sub + tax).toFixed(2));
+            data = {
+              _id: ev._id,
+              invoice_number: shortInv,
+              invoice_name: ev.title || "Job Invoice",
+              client_name: ev.client_name || "Client",
+              company_name: ev.company_name || "",
+              client_email: ev.email || "",
+              phone: ev.phone || "",
+              address: ev.address || {},
+              job_id: shortJob,
+              line_items: Array.isArray(ev.line_items) && ev.line_items.length > 0 ? ev.line_items : [
+                { name: ev.job_type || "Service Item", qty: 1, price: sub, cost: 0, taxable: true }
+              ],
+              subtotal: sub,
+              tax_rate: rate,
+              tax_amount: tax,
+              total_amount: tot,
+              amount_due: tot,
+              status: ev.status === "Completed" ? "Paid" : "Due",
+              sent_status: "No",
+              payments: ev.payments || [],
+              notes: ev.description || "",
+            };
+          }
+        } catch (e) {
+          console.warn("[INVOICE DETAIL DEBUG] Error calling api/events/:id:", e);
+        }
+      }
+
+      if (!data) {
+        try {
+          console.log("[INVOICE DETAIL DEBUG] Trying to match in list GET api/invoices?limit=100");
+          const resAll = await Api("GET", "api/invoices?limit=100", null, router);
+          const list = Array.isArray(resAll?.data) ? resAll.data : [];
+          data = list.find((i) => String(i._id) === String(id) || String(i.invoice_number) === String(id) || String(i.job_id) === String(id)) || null;
+          console.log("[INVOICE DETAIL DEBUG] Match from list:", data);
+        } catch (e) {
+          console.warn("[INVOICE DETAIL DEBUG] Error calling api/invoices list:", e);
+        }
+      }
+
       if (data) {
+        console.log("[INVOICE DETAIL DEBUG] Setting invoiceData successfully:", data);
+        setInvoiceData(data);
         if (data.invoice_number) setInvoiceId(String(data.invoice_number));
-        if (data.client_name) setClientName(data.client_name);
-        if (data.company_name) setCompanyName(data.company_name);
+        if (data.client_name) setClientName(String(data.client_name));
+        if (data.company_name) setCompanyName(String(data.company_name));
         if (data.phone) {
-          setPhone(data.phone);
-          setSendPhone(data.phone);
+          setPhone(String(data.phone));
+          setSendPhone(String(data.phone));
         }
         if (data.client_email || data.email) {
-          const mail = data.client_email || data.email;
+          const mail = String(data.client_email || data.email || "");
           setEmail(mail);
           setSendTo(mail);
         }
-        if (data.invoice_name || data.title) {
-          setInvoiceName(data.invoice_name || data.title.split(" - ")[0] || data.title);
-        }
+        const nameVal = data.invoice_name || (typeof data.title === "string" ? data.title.split(" - ")[0] : "Invoice");
+        setInvoiceName(String(nameVal));
         if (data.job_id) setJobId(String(data.job_id));
-        if (data.notes || data.description) setNotesText(data.notes || data.description || "");
-        if (data.tax_rate !== undefined) setTaxRate(Number(data.tax_rate));
-        if (data.sent_status) setSentStatus(data.sent_status);
+        if (data.notes || data.description) setNotesText(String(data.notes || data.description || ""));
+        if (data.tax_rate !== undefined) setTaxRate(Number(data.tax_rate) || 5.0);
+        if (data.sent_status) setSentStatus(String(data.sent_status));
+        if (data.address) {
+          const addr = data.address;
+          if (typeof addr === "object" && addr !== null) {
+            setStreetAddress(String(addr.street || ""));
+            setCityStateZip(`${addr.city || ""} ${addr.region || ""} ${addr.postal_code || ""}`.trim());
+          } else {
+            setStreetAddress(String(addr));
+          }
+        }
         if (Array.isArray(data.payments) && data.payments.length > 0) {
           setPaymentsList(data.payments);
         }
         if (Array.isArray(data.line_items) && data.line_items.length > 0) {
           setLineItems(
             data.line_items.map((it, idx) => ({
-              id: it._id || it.id || "item_" + idx,
-              name: it.name || "",
-              qty: Number(it.qty) || 1,
-              price: Number(it.price) || 0,
-              cost: Number(it.cost) || 0,
-              taxable: it.taxable !== false,
-              description: it.description || "",
+              id: (it && (it._id || it.id)) || "item_" + idx,
+              name: (it && it.name) || "Service Item",
+              qty: Number(it?.qty) || 1,
+              price: Number(it?.price) || 0,
+              cost: Number(it?.cost) || 0,
+              taxable: it?.taxable !== false,
+              description: (it && it.description) || "",
             }))
           );
         }
+      } else {
+        console.error("[INVOICE DETAIL DEBUG] No invoice data found for ID:", id);
+        setInvoiceData(null);
       }
     } catch (err) {
-      console.error(err);
+      console.error("[INVOICE DETAIL DEBUG] Critical error in fetchInvoiceDetails:", err);
+      setInvoiceData(null);
+    } finally {
+      setLoading(false);
+      console.log("[INVOICE DETAIL DEBUG] fetchInvoiceDetails completed, loading set to false.");
     }
   };
 
@@ -150,20 +240,9 @@ export default function InvoiceDetailContent() {
     try {
       const res = await Api("GET", "api/price-book", null, router);
       const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
-      if (list.length > 0) setPriceBookItems(list);
-      else {
-        setPriceBookItems([
-          { _id: "pb_1", name: 'Tv Installation 61"-75"', price: 109.99, cost: 40.0 },
-          { _id: "pb_2", name: 'Tv Installation 32"-55"', price: 99.99, cost: 35.0 },
-          { _id: "pb_3", name: "Full motion mount", price: 125.0, cost: 50.0 },
-        ]);
-      }
+      setPriceBookItems(list);
     } catch (err) {
-      setPriceBookItems([
-        { _id: "pb_1", name: 'Tv Installation 61"-75"', price: 109.99, cost: 40.0 },
-        { _id: "pb_2", name: 'Tv Installation 32"-55"', price: 99.99, cost: 35.0 },
-        { _id: "pb_3", name: "Full motion mount", price: 125.0, cost: 50.0 },
-      ]);
+      setPriceBookItems([]);
     }
   };
 
@@ -212,15 +291,32 @@ export default function InvoiceDetailContent() {
       return;
     }
     try {
-      await Api("POST", `api/invoices/${invoiceId || id}/send`, {
-        sendTo,
-        sendPhone,
-      }, router);
-    } catch (e) {}
-
-    setSentStatus("Yes");
-    setIsSendPanelOpen(false);
-    toast.success(sendTab === "email" ? "Invoice email sent!" : "Invoice SMS sent!");
+      const payload = {
+        send_type: sendTab,
+        to: sendTo,
+        cc: sendCc,
+        phone: sendPhone,
+        subject: sendSubject,
+        message: sendMessage,
+        request_signature: requestSignature,
+        let_pay_credit_card: letPayCreditCard,
+        advanced_options: advancedOptions,
+      };
+      await Api("POST", `api/invoices/${invoiceId || id}/send`, payload, router);
+      setSentStatus("Yes");
+      if (requestSignature && signatureStatus !== "signed") {
+        setSignatureStatus("requested");
+      }
+      setIsSendPanelOpen(false);
+      toast.success(
+        requestSignature
+          ? "Invoice and signature request sent successfully!"
+          : "Invoice sent successfully!"
+      );
+      fetchInvoiceDetails();
+    } catch (err) {
+      toast.error(err.message || "Error sending invoice");
+    }
   };
 
   const subtotal = lineItems.reduce((acc, it) => acc + it.price * it.qty, 0);
@@ -313,6 +409,18 @@ export default function InvoiceDetailContent() {
         By paying the due balance on invoices provided, the Client hereby acknowledges that all requested service items for this date and/or any other dates listed above in the description section of the table, have been performed and have been tested showing successful satisfactory install/repair, unless otherwise stated on the invoice, in which labor service charges still apply if any repairs have been made. By accepting this invoice, the Client agrees to pay in full the amount listed in the Total section of the invoice.
         <br/><br/><strong>Notes:</strong>
       </div>
+      ${signatureData ? `
+      <div style="margin-top:24px;display:flex;align-items:flex-end;justify-content:space-between;padding-top:16px;border-top:1px dashed #ccc;">
+        <div>
+          <div style="font-size:10px;font-weight:700;color:#888;text-transform:uppercase;">Authorized Signature</div>
+          <img src="${signatureData}" style="max-height:50px;margin-top:4px;" />
+          <div style="font-size:11px;font-weight:700;color:#111;">${signerName || clientName}</div>
+        </div>
+        <div style="font-size:10px;color:#888;">
+          Signed on: ${signedAt ? new Date(signedAt).toLocaleDateString() : new Date().toLocaleDateString()}
+        </div>
+      </div>
+      ` : ''}
       <div class="thank-you"><em>Thank you for your business!</em></div>
     </body></html>`;
   };
@@ -376,6 +484,31 @@ export default function InvoiceDetailContent() {
       toast.error("Failed to generate PDF");
     }
   };
+
+  if (loading) {
+    return (
+      <div className="min-h-[60vh] flex flex-col items-center justify-center p-8 space-y-4">
+        <Loader2 className="w-8 h-8 text-[#D31010] animate-spin" />
+        <p className="text-xs font-bold text-slate-400">Loading invoice...</p>
+      </div>
+    );
+  }
+
+  if (!invoiceData) {
+    return (
+      <NotFoundState
+        title="Invoice Not Found"
+        message="This invoice was probably deleted, restricted or never existed."
+        buttonText="Back to Invoices"
+        backUrl="/invoices"
+        breadcrumbs={[
+          { label: `INVOICE (${invoiceId || id})`, url: "/invoices" },
+          { label: "INVOICES", url: "/invoices" },
+          { label: `INVOICE (${invoiceId || id})` },
+        ]}
+      />
+    );
+  }
 
   return (
     <div className="p-4 sm:p-6 lg:p-8 max-w-[1600px] mx-auto space-y-6 pt-4 sm:pt-6 text-slate-800 dark:text-slate-100">
@@ -474,7 +607,7 @@ export default function InvoiceDetailContent() {
                       type="button"
                       onClick={() => {
                         setShowActionsMenu(false);
-                        toast.info("Opening signature pad...");
+                        setIsSignatureModalOpen(true);
                       }}
                       className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 text-slate-700 dark:text-slate-300 cursor-pointer"
                     >
@@ -486,7 +619,12 @@ export default function InvoiceDetailContent() {
                       type="button"
                       onClick={() => {
                         setShowActionsMenu(false);
-                        toast.success("Signature request sent to client");
+                        setRequestSignature(true);
+                        setSendSubject(`View invoice #${invoiceId} from Pixl canada ltd`);
+                        setSendMessage(`Hi ${clientName.split(" ")[0] || "there"},\n\nThanks again for choosing Pixl canada ltd!\nYour invoice total is $${totalAmount.toFixed(2)}, and needs to be paid by ${paidOn || "due date"}.`);
+                        setSendTo(email);
+                        setSendPhone(phone);
+                        setIsSendPanelOpen(true);
                       }}
                       className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 text-slate-700 dark:text-slate-300 cursor-pointer"
                     >
@@ -633,6 +771,17 @@ export default function InvoiceDetailContent() {
             <span className={`font-bold ${sentStatus === "Yes" ? "text-emerald-600" : "text-red-500"}`}>
               {sentStatus}
             </span>
+          </div>
+
+          <div>
+            <span className="text-slate-400 font-extrabold">Signature: </span>
+            {signatureStatus === "signed" || signatureData ? (
+              <span className="font-bold text-emerald-600">Signed by {signerName || clientName}</span>
+            ) : signatureStatus === "requested" ? (
+              <span className="font-bold text-amber-500">Requested</span>
+            ) : (
+              <span className="font-bold text-slate-400">Not signed</span>
+            )}
           </div>
         </div>
       </div>
@@ -905,16 +1054,76 @@ export default function InvoiceDetailContent() {
             </h3>
             <button
               type="button"
-              onClick={() => toast.info("Opening signature pad...")}
+              onClick={() => setIsSignatureModalOpen(true)}
               className="px-4 py-1.5 bg-[#D31010] hover:bg-[#b00d0d] text-white text-xs font-extrabold rounded-full shadow-md flex items-center gap-1.5 cursor-pointer"
             >
               <Edit3 className="w-3.5 h-3.5" />
-              <span>Sign</span>
+              <span>{signatureData ? "Re-sign" : "Sign"}</span>
             </button>
           </div>
-          <div className="py-6 text-center text-slate-400 font-semibold">
-            No signatures found
-          </div>
+
+          {signatureData || signatureStatus === "signed" ? (
+            <div className="p-4 bg-slate-50 dark:bg-slate-900 rounded-2xl border border-slate-200/80 dark:border-slate-800 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300 flex items-center gap-1">
+                  <Check className="w-3 h-3 stroke-[3]" />
+                  <span>Signed</span>
+                </span>
+                <span className="text-[11px] text-slate-400 font-semibold">
+                  {signedAt ? new Date(signedAt).toLocaleDateString() : new Date().toLocaleDateString()}
+                </span>
+              </div>
+
+              <div className="p-2 bg-white rounded-xl border border-slate-200 flex items-center justify-center min-h-[90px] shadow-inner">
+                {signatureData ? (
+                  <img
+                    src={signatureData}
+                    alt="Authorized signature"
+                    className="max-h-20 max-w-full object-contain"
+                  />
+                ) : (
+                  <span className="text-xs italic text-slate-400 font-semibold">Signature on file</span>
+                )}
+              </div>
+
+              <div className="text-xs font-bold text-slate-700 dark:text-slate-300 flex items-center justify-between">
+                <span>Signer:</span>
+                <span className="font-extrabold text-slate-900 dark:text-white capitalize">
+                  {signerName || clientName}
+                </span>
+              </div>
+            </div>
+          ) : signatureStatus === "requested" ? (
+            <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center">
+              <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300">
+                Signature Requested
+              </span>
+              <p className="text-xs text-slate-400 max-w-xs">
+                Awaiting client signature via email or SMS.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsSignatureModalOpen(true)}
+                className="mt-2 text-xs font-extrabold text-[#D31010] hover:underline cursor-pointer"
+              >
+                Sign on screen now
+              </button>
+            </div>
+          ) : (
+            <div className="py-6 flex flex-col items-center justify-center space-y-2 text-center">
+              <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                <Edit3 className="w-6 h-6" />
+              </div>
+              <p className="text-xs text-slate-400 font-semibold">No signature on file</p>
+              <button
+                type="button"
+                onClick={() => setIsSignatureModalOpen(true)}
+                className="text-xs font-extrabold text-[#D31010] hover:underline cursor-pointer"
+              >
+                + Sign document now
+              </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -1358,7 +1567,7 @@ export default function InvoiceDetailContent() {
               <div className="px-6 py-4 border-t border-slate-200 dark:border-slate-800 flex items-center gap-3 sticky bottom-0 bg-white dark:bg-[#0E1E31]">
                 <button
                   type="button"
-                  onClick={() => toast.info("Previewing invoice...")}
+                  onClick={handlePreview}
                   className="flex-1 px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-extrabold rounded-full hover:bg-slate-50 cursor-pointer"
                 >
                   Preview invoice
@@ -1375,6 +1584,21 @@ export default function InvoiceDetailContent() {
           </>
         )}
       </AnimatePresence>
+
+      {/* Document Signature Modal */}
+      <DocumentSignatureModal
+        isOpen={isSignatureModalOpen}
+        onClose={() => setIsSignatureModalOpen(false)}
+        invoiceId={id}
+        clientName={clientName}
+        onSigned={(sigData) => {
+          setSignatureData(sigData.signature);
+          setSignerName(sigData.signer_name);
+          setSignedAt(new Date());
+          setSignatureStatus("signed");
+          fetchInvoiceDetails();
+        }}
+      />
     </div>
   );
 }

@@ -27,7 +27,7 @@ export default function InvoicesContent() {
   const [selectedIds, setSelectedIds] = useState([]);
   const [isAddInvoiceModalOpen, setIsAddInvoiceModalOpen] = useState(false);
   const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(50);
+  const [limit, setLimit] = useState(20);
   const [total, setTotal] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
@@ -129,6 +129,139 @@ export default function InvoicesContent() {
     link.click();
     document.body.removeChild(link);
     toast.success("Invoices CSV exported successfully!");
+  };
+
+  const handleDownloadInvoicePDF = (e, inv) => {
+    e.stopPropagation();
+    const shortInvoiceId = inv.invoice_number || (inv._id ? String(inv._id).slice(-4) : "INV");
+    const invoiceDate = inv.created_date
+      ? new Date(inv.created_date).toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" })
+      : new Date().toLocaleDateString("en-US", { month: "short", day: "2-digit", year: "numeric" });
+    const subtotal = Number(inv.subtotal || 0);
+    const taxAmount = Number(inv.tax_amount || 0);
+    const totalAmount = Number(inv.total_amount || subtotal + taxAmount);
+    const balanceDue = Number(inv.amount_due !== undefined ? inv.amount_due : totalAmount);
+
+    const items = Array.isArray(inv.line_items) && inv.line_items.length > 0
+      ? inv.line_items
+      : [{ name: inv.invoice_name || "Service Item", qty: 1, price: subtotal, cost: 0, taxable: true }];
+
+    const itemRows = items
+      .map(
+        (it) => `
+      <tr>
+        <td style="padding:10px 8px;border-bottom:1px solid #eee;font-weight:600;">${it.name || "Item"}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:center;">${it.qty || 1}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;">$${Number(it.price || 0).toFixed(2)}</td>
+        <td style="padding:10px 8px;border-bottom:1px solid #eee;text-align:right;font-weight:700;">$${(Number(it.price || 0) * Number(it.qty || 1)).toFixed(2)}</td>
+      </tr>`
+      )
+      .join("");
+
+    const clientAddr = typeof inv.address === "object" && inv.address ? inv.address : {};
+    const street = clientAddr.street || clientAddr.address || "";
+    const city = clientAddr.city || "";
+    const state = clientAddr.state || "";
+    const zip = clientAddr.zip || clientAddr.postal_code || "";
+    const fullAddress = [street, city, state, zip].filter(Boolean).join(", ");
+
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
+      <title>Invoice #${shortInvoiceId}</title>
+      <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap');
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Inter', sans-serif; color: #222; background: #fff; padding: 48px 60px; font-size: 13px; }
+        .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 36px; }
+        .logo-area { display: flex; align-items: center; gap: 8px; font-size: 26px; font-weight: 900; color: #111; }
+        .logo-dot { color: #D31010; font-size: 32px; }
+        .company-info { font-size: 11px; color: #555; line-height: 1.6; margin-top: 4px; }
+        .doc-title { font-size: 28px; font-weight: 900; color: #111; letter-spacing: -0.5px; text-align: right; }
+        .meta-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 24px; margin-bottom: 36px; padding-bottom: 24px; border-bottom: 2px solid #f0f0f0; }
+        .meta-col h4 { font-size: 10px; font-weight: 700; color: #999; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px; }
+        .meta-col p { font-size: 12px; color: #333; line-height: 1.5; font-weight: 500; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 32px; }
+        th { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: #888; padding: 8px; border-bottom: 2px solid #ddd; }
+        .totals-section { display: flex; justify-content: flex-end; margin-bottom: 48px; }
+        .totals-table { width: 280px; }
+        .totals-table tr td { padding: 6px 0; font-size: 12px; }
+        .totals-table tr.total-row td { font-size: 15px; font-weight: 800; color: #111; border-top: 2px solid #222; padding-top: 10px; }
+        .totals-table tr.due-row td { font-size: 14px; font-weight: 800; color: #D31010; }
+        .footer { border-top: 1px solid #eee; padding-top: 24px; text-align: center; font-size: 11px; color: #888; }
+        @media print { body { padding: 20px; } @page { margin: 15mm; } }
+      </style></head>
+      <body>
+        <div class="header">
+          <div>
+            <div class="logo-area">PIXL<span class="logo-dot">.</span></div>
+            <div class="company-info">
+              <strong>Pixl Canada Ltd</strong><br />
+              (825) 461-5020<br />
+              info@pixlcanada.ca
+            </div>
+          </div>
+          <div>
+            <div class="doc-title">INVOICE</div>
+            <div style="text-align:right; font-size:12px; color:#666; margin-top:4px;">
+              <strong>#${shortInvoiceId}</strong><br />
+              Date: ${invoiceDate}<br />
+              <span style="color:#D31010; font-weight:700;">Balance Due: $${balanceDue.toFixed(2)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="meta-grid">
+          <div class="meta-col">
+            <h4>BILL TO</h4>
+            <p><strong>${inv.client_name || "Client"}</strong></p>
+            ${inv.company_name ? `<p>${inv.company_name}</p>` : ""}
+            ${inv.client_email ? `<p>${inv.client_email}</p>` : ""}
+            ${inv.phone ? `<p>${inv.phone}</p>` : ""}
+          </div>
+          <div class="meta-col">
+            <h4>SERVICE ADDRESS</h4>
+            <p>${fullAddress || street || "On-site"}</p>
+          </div>
+          <div class="meta-col">
+            <h4>INVOICE DETAILS</h4>
+            <p>Invoice Name: <strong>${inv.invoice_name || "Job Service"}</strong></p>
+            <p>Status: <strong>${inv.status || "Due"}</strong></p>
+            ${inv.job_id ? `<p>Job Ref: #${inv.job_id}</p>` : ""}
+          </div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th style="text-align:left;">Item / Description</th>
+              <th style="text-align:center; width:60px;">Qty</th>
+              <th style="text-align:right; width:100px;">Unit Price</th>
+              <th style="text-align:right; width:100px;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>${itemRows}</tbody>
+        </table>
+
+        <div class="totals-section">
+          <table class="totals-table">
+            <tr><td>Subtotal</td><td style="text-align:right;">$${subtotal.toFixed(2)}</td></tr>
+            <tr><td>Tax (${Number(inv.tax_rate || 5).toFixed(1)}%)</td><td style="text-align:right;">$${taxAmount.toFixed(2)}</td></tr>
+            <tr class="total-row"><td>Total</td><td style="text-align:right;">$${totalAmount.toFixed(2)}</td></tr>
+            <tr class="due-row"><td>Balance Due</td><td style="text-align:right;">$${balanceDue.toFixed(2)}</td></tr>
+          </table>
+        </div>
+
+        <div class="footer">
+          <p>Thank you for your business with Pixl Canada Ltd!</p>
+        </div>
+        <script>window.onload = function() { window.print(); };</script>
+      </body></html>`;
+
+    const printWin = window.open("", "_blank");
+    if (printWin) {
+      printWin.document.open();
+      printWin.document.write(html);
+      printWin.document.close();
+    }
   };
 
   const getStatusBadgeClass = (status) => {
@@ -332,12 +465,13 @@ export default function InvoicesContent() {
                 <th className="py-3.5 px-4">Due</th>
                 <th className="py-3.5 px-4">Status</th>
                 <th className="py-3.5 px-4">Job</th>
+                <th className="py-3.5 px-4 text-right">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
               {loading ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={13} className="py-12 text-center text-slate-400">
                     <div className="flex items-center justify-center gap-2">
                       <RefreshCw className="w-4 h-4 animate-spin text-slate-400" />
                       <span>Loading invoices...</span>
@@ -346,7 +480,7 @@ export default function InvoicesContent() {
                 </tr>
               ) : invoices.length === 0 ? (
                 <tr>
-                  <td colSpan={12} className="py-12 text-center text-slate-400">
+                  <td colSpan={13} className="py-12 text-center text-slate-400">
                     No invoices found. Click "Create invoice" to generate one.
                   </td>
                 </tr>
@@ -364,7 +498,7 @@ export default function InvoicesContent() {
                   return (
                     <tr
                       key={invId}
-                      onClick={() => router.push(`/invoices/${inv.invoice_number || invId}`)}
+                      onClick={() => router.push(`/invoices/${invId || inv.invoice_number}`)}
                       className="hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer"
                     >
                       <td
@@ -441,6 +575,22 @@ export default function InvoicesContent() {
                       <td className="py-4 px-4 font-semibold text-slate-700 dark:text-slate-300">
                         {inv.job_id ? `#${inv.job_id}` : "-"}
                       </td>
+
+                      <td
+                        className="py-4 px-4 text-right"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        <div className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(e) => handleDownloadInvoicePDF(e, inv)}
+                            className="p-1.5 text-slate-500 hover:text-[#D31010] hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
+                            title="Download PDF Invoice"
+                          >
+                            <Download className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   );
                 })
@@ -449,29 +599,78 @@ export default function InvoicesContent() {
           </table>
         </div>
 
-        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between text-xs text-slate-400">
-          <span>Showing {total === 0 ? 0 : (page - 1) * limit + 1} to {Math.min(page * limit, total)} of {total} entries</span>
-          <div className="flex items-center gap-1.5">
+        <div className="p-4 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-4 text-xs text-slate-500 dark:text-slate-400">
+          <div className="flex items-center gap-3">
+            <span>
+              Showing <span className="font-bold text-slate-700 dark:text-slate-200">{total === 0 ? 0 : (page - 1) * limit + 1}</span> to{" "}
+              <span className="font-bold text-slate-700 dark:text-slate-200">{Math.min(page * limit, total)}</span> of{" "}
+              <span className="font-bold text-slate-700 dark:text-slate-200">{total}</span> entries
+            </span>
+
+            <div className="flex items-center gap-1.5 pl-2 border-l border-slate-200 dark:border-slate-800">
+              <span>Rows per page:</span>
+              <select
+                value={limit}
+                onChange={(e) => {
+                  setLimit(Number(e.target.value));
+                  setPage(1);
+                }}
+                className="px-2 py-1 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer"
+              >
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1">
             <button
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((p) => Math.max(1, p - 1))}
-              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+              className="px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent font-semibold flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <ChevronLeft className="w-3.5 h-3.5" />
+              <span>Prev</span>
             </button>
 
-            <span className="px-2 font-semibold text-slate-700 dark:text-slate-300">
-              {page} / {totalPages}
-            </span>
+            {Array.from({ length: Math.min(totalPages, 5) }, (_, i) => {
+              let pNum;
+              if (totalPages <= 5) {
+                pNum = i + 1;
+              } else if (page <= 3) {
+                pNum = i + 1;
+              } else if (page >= totalPages - 2) {
+                pNum = totalPages - 4 + i;
+              } else {
+                pNum = page - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pNum}
+                  type="button"
+                  onClick={() => setPage(pNum)}
+                  className={`w-8 h-8 rounded-xl font-bold transition-all cursor-pointer ${
+                    page === pNum
+                      ? "bg-[#D31010] text-white shadow-sm shadow-red-500/20"
+                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+                >
+                  {pNum}
+                </button>
+              );
+            })}
 
             <button
               type="button"
               disabled={page >= totalPages}
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-              className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 disabled:opacity-30 cursor-pointer"
+              className="px-3 py-1.5 border border-slate-200 dark:border-slate-800 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent font-semibold flex items-center gap-1 cursor-pointer transition-colors"
             >
-              <ChevronRight className="w-4 h-4" />
+              <span>Next</span>
+              <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>

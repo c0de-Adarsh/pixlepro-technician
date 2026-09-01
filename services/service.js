@@ -1,8 +1,6 @@
 import axios from "axios";
-const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "https://pixle-technician.onrender.com/";
-
-
-// const Constants = "https://pixle-technician.onrender.com/"
+const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "https://staging.pixlservice.com/";
+// const Constants = "https://staging.pixlservice.com/
 // const ConstantsUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3009/";
 // production
 let cachedApiKey = "";
@@ -52,7 +50,7 @@ async function Api(method, url, data, router) {
   } catch (err) {
     console.log(err);
     if (err.response) {
-      if (err.response.status === 401 && String(err.response.data?.error || "").includes("JWT")) {
+        if (err.response.status === 401 && String(err.response.data?.error || "").includes("JWT")) {
         if (typeof window !== "undefined") {
           localStorage.removeItem("userDetail");
           localStorage.removeItem("token");
@@ -78,7 +76,7 @@ async function ApiFormData(method, url, data, router) {
   }
 
   try {
-    const res = await axios({
+  const res = await axios({
       method,
       url: ConstantsUrl + url,
       data,
@@ -91,6 +89,12 @@ async function ApiFormData(method, url, data, router) {
       if (err.response.status === 401 && String(err.response.data?.error || "").includes("JWT")) {
         if (typeof window !== "undefined") {
           localStorage.removeItem("userDetail");
+          localStorage.removeItem("token");
+          if (router?.push) router.push("/auth/login");
+rage.removeItem("userDetail");
+          localStorage.removeItem("token");
+          if (router?.push) router.push("/auth/login");
+orage.removeItem("userDetail");
           localStorage.removeItem("token");
           if (router?.push) router.push("/auth/login");
         }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -20,6 +20,11 @@ import {
   RefreshCw,
   ArrowRightCircle,
   Trash2,
+  X,
+  Users,
+  Layers,
+  Globe,
+  Navigation,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 import { goeyToast as toast } from "goey-toast";
@@ -39,7 +44,36 @@ export default function LeadsContent() {
   const [convertingId, setConvertingId] = useState(null);
 
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
+  const [filterSearchText, setFilterSearchText] = useState("");
+  const [activeFilter, setActiveFilter] = useState(null); // { category: 'team' | 'tag' | 'type' | 'source' | 'area', value: string, label: string }
+
   const [dateRangeText, setDateRangeText] = useState("Recent 30 days");
+  const [leadStatuses, setLeadStatuses] = useState([]);
+
+  // 100% Dynamic Filter Data from Database
+  const [teamsList, setTeamsList] = useState([]);
+  const [tagsList, setTagsList] = useState([]);
+  const [leadTypesList, setLeadTypesList] = useState([]);
+  const [sourcesList, setSourcesList] = useState([]);
+  const [serviceAreasList, setServiceAreasList] = useState([]);
+
+  const filterDropdownRef = useRef(null);
+
+  useEffect(() => {
+    fetchLeads();
+    fetchLeadStatuses();
+    fetchFilterMetadata();
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (filterDropdownRef.current && !filterDropdownRef.current.contains(event.target)) {
+        setShowFilterDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const fetchLeads = async () => {
     try {
@@ -50,9 +84,10 @@ export default function LeadsContent() {
         const mapped = raw.map((item) => {
           const shortId = item._id ? item._id.substring(item._id.length - 4) : item.id;
           const addr = item.address;
-          const fullAddr = typeof addr === "object"
-            ? `${addr.street || ""} ${addr.city || ""}`.trim()
-            : (item.address || "");
+          const fullAddr =
+            typeof addr === "object"
+              ? `${addr.street || ""} ${addr.city || ""}`.trim()
+              : item.address || "";
 
           const createdDate = item.createdAt
             ? new Date(item.createdAt).toLocaleDateString("en-US", {
@@ -89,6 +124,7 @@ export default function LeadsContent() {
             location: fullAddr || "-",
             type: item.job_type || item.title?.split(" - ")[0] || "Service Call",
             phone: item.phone || "-",
+            assignedTech: item.assigned_tech || "",
             created: createdDate,
             modified: modDate,
             rawItem: item,
@@ -103,9 +139,119 @@ export default function LeadsContent() {
     }
   };
 
+  const fetchLeadStatuses = async () => {
+    try {
+      const res = await Api("GET", "api/lead-statuses", null, router);
+      const list = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      if (list.length > 0) {
+        setLeadStatuses(list);
+      } else {
+        setLeadStatuses([
+          { name: "New", color: "#3B82F6" },
+          { name: "Scheduled", color: "#8B5CF6" },
+          { name: "In Progress", color: "#F59E0B" },
+          { name: "Estimated", color: "#10B981" },
+          { name: "Approved", color: "#065F46" },
+        ]);
+      }
+    } catch (err) {
+      console.error("Error fetching lead statuses:", err);
+    }
+  };
+
+  const fetchFilterMetadata = async () => {
+    try {
+      const [resTeams, resTags, resJobTypes, resSources, resAreas] = await Promise.allSettled([
+        Api("GET", "api/teams", null, router),
+        Api("GET", "api/tags", null, router),
+        Api("GET", "api/job-types", null, router),
+        Api("GET", "api/ad-groups", null, router),
+        Api("GET", "api/service-areas", null, router),
+      ]);
+
+      // 1. Teams (Purely from DB)
+      const rawTeams = resTeams.status === "fulfilled" && Array.isArray(resTeams.value?.data) ? resTeams.value.data : [];
+      const dbTeams = rawTeams
+        .map((t) => ({
+          name: t.name || `${t.first_name || ""} ${t.last_name || ""}`.trim(),
+          color: t.schedule_color || "#D31010",
+        }))
+        .filter((t) => t.name);
+      setTeamsList(dbTeams);
+
+      // 2. Tags (Purely from DB with their dynamic colors)
+      const rawTags = resTags.status === "fulfilled" && Array.isArray(resTags.value?.data) ? resTags.value.data : [];
+      const dbTags = rawTags
+        .map((t) => ({
+          name: t.name,
+          color: t.color || "#4C1D95",
+        }))
+        .filter((t) => t.name);
+      setTagsList(dbTags);
+
+      // 3. Lead Types / Job Types (Purely from DB + created leads)
+      const rawJobTypes = resJobTypes.status === "fulfilled" && Array.isArray(resJobTypes.value?.data) ? resJobTypes.value.data : [];
+      const dbJobTypes = rawJobTypes
+        .map((j) => ({
+          name: j.name,
+          color: j.color || null,
+        }))
+        .filter((j) => j.name);
+
+      setLeadTypesList(dbJobTypes);
+
+      // 4. Sources / Ad Groups (Purely from DB)
+      const rawSources = resSources.status === "fulfilled" && Array.isArray(resSources.value?.data) ? resSources.value.data : [];
+      const dbSources = rawSources
+        .map((s) => ({
+          name: s.name,
+          color: s.color || null,
+        }))
+        .filter((s) => s.name);
+      setSourcesList(dbSources);
+
+      // 5. Service Areas (Purely from DB with their dynamic colors)
+      const rawAreas = resAreas.status === "fulfilled" && Array.isArray(resAreas.value?.data) ? resAreas.value.data : [];
+      const dbAreas = rawAreas
+        .map((a) => ({
+          name: a.name,
+          color: a.color || "#00FFC2",
+        }))
+        .filter((a) => a.name);
+      setServiceAreasList(dbAreas);
+    } catch (e) {
+      console.error("Error fetching filter metadata:", e);
+    }
+  };
+
+  // Dynamically sync unique job types from created leads into filter list
   useEffect(() => {
-    fetchLeads();
-  }, [router]);
+    if (leads && leads.length > 0) {
+      setLeadTypesList((prev) => {
+        const existingNames = new Set(prev.map((jt) => jt.name.toLowerCase()));
+        const fromLeads = [];
+        leads.forEach((l) => {
+          if (l.type && !existingNames.has(l.type.toLowerCase())) {
+            existingNames.add(l.type.toLowerCase());
+            fromLeads.push({ name: l.type, color: null });
+          }
+        });
+        return [...prev, ...fromLeads];
+      });
+
+      setSourcesList((prev) => {
+        const existingNames = new Set(prev.map((s) => s.name.toLowerCase()));
+        const fromLeads = [];
+        leads.forEach((l) => {
+          if (l.source && !existingNames.has(l.source.toLowerCase())) {
+            existingNames.add(l.source.toLowerCase());
+            fromLeads.push({ name: l.source, color: null });
+          }
+        });
+        return [...prev, ...fromLeads];
+      });
+    }
+  }, [leads]);
 
   const metrics = useMemo(() => {
     const counts = {
@@ -136,6 +282,7 @@ export default function LeadsContent() {
 
   const filteredLeads = useMemo(() => {
     return leads.filter((item) => {
+      // 1. Status Filter from Top Cards
       if (
         selectedFilterCategory !== "all" &&
         item.status.toLowerCase() !== selectedFilterCategory.toLowerCase()
@@ -143,6 +290,29 @@ export default function LeadsContent() {
         return false;
       }
 
+      // 2. Active 5-Column Filter
+      if (activeFilter) {
+        const val = activeFilter.value.toLowerCase();
+        if (activeFilter.category === "team") {
+          const tech = (item.assignedTech || "").toLowerCase();
+          const clientName = (item.client.name || "").toLowerCase();
+          if (!tech.includes(val) && !clientName.includes(val)) return false;
+        } else if (activeFilter.category === "tag") {
+          const itemTags = (item.tags || []).map((t) => (typeof t === "string" ? t : t.name || "").toLowerCase());
+          if (!itemTags.some((t) => t.includes(val))) return false;
+        } else if (activeFilter.category === "type") {
+          const itemType = (item.type || "").toLowerCase();
+          if (!itemType.includes(val)) return false;
+        } else if (activeFilter.category === "source") {
+          const itemSource = (item.source || "").toLowerCase();
+          if (!itemSource.includes(val)) return false;
+        } else if (activeFilter.category === "area") {
+          const itemLoc = (item.location || "").toLowerCase();
+          if (!itemLoc.includes(val)) return false;
+        }
+      }
+
+      // 3. Search Query
       if (searchQuery.trim() !== "") {
         const q = searchQuery.toLowerCase();
         const idMatch = String(item.id).includes(q);
@@ -151,12 +321,13 @@ export default function LeadsContent() {
         const phoneMatch = item.phone.includes(q);
         const typeMatch = item.type.toLowerCase().includes(q);
         const sourceMatch = item.source.toLowerCase().includes(q);
-        return idMatch || nameMatch || emailMatch || phoneMatch || typeMatch || sourceMatch;
+        const locationMatch = item.location.toLowerCase().includes(q);
+        return idMatch || nameMatch || emailMatch || phoneMatch || typeMatch || sourceMatch || locationMatch;
       }
 
       return true;
     });
-  }, [leads, selectedFilterCategory, searchQuery]);
+  }, [leads, selectedFilterCategory, activeFilter, searchQuery]);
 
   const handleSelectAll = (e) => {
     if (e.target.checked) {
@@ -244,8 +415,16 @@ export default function LeadsContent() {
     toast.success("Leads CSV exported successfully!");
   };
 
+  const filterQueryLower = filterSearchText.toLowerCase().trim();
+  const filteredTeams = teamsList.filter((t) => !filterQueryLower || t.name.toLowerCase().includes(filterQueryLower));
+  const filteredTags = tagsList.filter((t) => !filterQueryLower || t.name.toLowerCase().includes(filterQueryLower));
+  const filteredTypes = leadTypesList.filter((t) => !filterQueryLower || t.name.toLowerCase().includes(filterQueryLower));
+  const filteredSources = sourcesList.filter((s) => !filterQueryLower || s.name.toLowerCase().includes(filterQueryLower));
+  const filteredAreas = serviceAreasList.filter((a) => !filterQueryLower || a.name.toLowerCase().includes(filterQueryLower));
+
   return (
     <div className="w-full max-w-[1600px] mx-auto space-y-5 pt-6 sm:pt-8 pb-16 px-3 sm:px-6 md:px-8 text-slate-800 dark:text-slate-100">
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">
@@ -275,26 +454,35 @@ export default function LeadsContent() {
         </div>
       </div>
 
+      {/* Top Status Cards */}
       <div className="w-full overflow-x-auto scrollbar-none py-1">
-        <div className="flex items-center gap-3 min-w-[760px] sm:min-w-0 grid-cols-2 sm:grid-cols-3 md:grid-cols-6 sm:grid">
+        <div className="flex items-stretch gap-4 min-w-[700px]">
           {metrics.map((metric) => {
-            const isActive = selectedFilterCategory === metric.id;
+            const isSelected = selectedFilterCategory.toLowerCase() === metric.id.toLowerCase();
             return (
               <div
                 key={metric.id}
                 onClick={() => setSelectedFilterCategory(metric.id)}
-                className={`relative overflow-hidden bg-white dark:bg-[#0E1E31] rounded-2xl p-4 flex flex-col justify-between transition-all cursor-pointer select-none shadow-xs hover:shadow-md border ${
-                  isActive
-                    ? "border-slate-300 dark:border-slate-700 border-l-[4px] border-l-[#D31010] shadow-sm"
-                    : "border-slate-200/80 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                className={`flex-1 p-4 rounded-2xl border transition-all cursor-pointer relative overflow-hidden bg-white dark:bg-[#0E1E31] ${
+                  isSelected
+                    ? "border-[#D31010] shadow-md ring-2 ring-[#D31010]/15"
+                    : "border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700 shadow-xs"
                 }`}
               >
-                <span className="text-xs font-bold text-slate-700 dark:text-slate-300 pl-1">
-                  {metric.label}
-                </span>
-
-                <div className="text-right mt-2">
-                  <span className="text-2xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                {isSelected && (
+                  <div className="absolute top-0 left-0 right-0 h-1 bg-[#D31010]" />
+                )}
+                <div className="flex flex-col items-center justify-center text-center space-y-1">
+                  <span
+                    className={`text-xs font-bold capitalize ${
+                      isSelected
+                        ? "text-[#D31010]"
+                        : "text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    {metric.label}
+                  </span>
+                  <span className="text-2xl font-black text-slate-800 dark:text-white">
                     {metric.count}
                   </span>
                 </div>
@@ -304,69 +492,267 @@ export default function LeadsContent() {
         </div>
       </div>
 
-      <div className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl p-3 sm:p-4 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-        <div className="relative">
-          <button
-            onClick={() => setShowFilterDropdown(!showFilterDropdown)}
-            className="flex items-center gap-2 px-3 py-1.5 text-xs sm:text-sm font-bold text-[#D31010] hover:text-[#b00d0d] transition-colors cursor-pointer"
-          >
-            <span>Filter results</span>
+      {/* Full-Width 5-Column Workiz Filter Bar */}
+      <div className="relative" ref={filterDropdownRef}>
+        <div
+          onClick={() => setShowFilterDropdown(!showFilterDropdown)}
+          className={`w-full bg-white dark:bg-[#0E1E31] border rounded-2xl px-4 py-3 shadow-xs flex items-center justify-between gap-3 cursor-pointer transition-all ${
+            showFilterDropdown
+              ? "border-amber-400 ring-2 ring-amber-400/20 shadow-md"
+              : activeFilter
+              ? "border-[#D31010] ring-1 ring-[#D31010]/20"
+              : "border-slate-300 dark:border-slate-700 hover:border-slate-400"
+          }`}
+        >
+          <div className="flex items-center gap-2 flex-1 overflow-hidden">
+            {activeFilter ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-slate-500 capitalize">
+                  {activeFilter.category}:
+                </span>
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/60 text-[#D31010] text-xs font-extrabold rounded-full shadow-xs">
+                  <span>{activeFilter.label}</span>
+                  <X
+                    className="w-3.5 h-3.5 hover:text-red-800 cursor-pointer"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setActiveFilter(null);
+                    }}
+                  />
+                </span>
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-slate-400">
+                Filter results
+              </span>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2">
+            {activeFilter && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveFilter(null);
+                }}
+                className="text-[11px] font-bold text-slate-400 hover:text-[#D31010] px-2 py-0.5 rounded transition-colors"
+              >
+                Clear
+              </button>
+            )}
             <ChevronDown
-              className={`w-4 h-4 transition-transform duration-200 ${
-                showFilterDropdown ? "rotate-180" : ""
+              className={`w-4 h-4 text-slate-400 transition-transform duration-200 ${
+                showFilterDropdown ? "rotate-180 text-amber-500" : ""
               }`}
             />
-          </button>
-
-          <AnimatePresence>
-            {showFilterDropdown && (
-              <motion.div
-                initial={{ opacity: 0, y: 5 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: 5 }}
-                className="absolute left-0 top-full mt-2 w-64 p-3 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl z-30 text-xs text-slate-700 dark:text-slate-200 space-y-2"
-              >
-                <p className="font-bold text-slate-900 dark:text-white mb-1">
-                  Filter by Status:
-                </p>
-                {["all", "new", "in progress", "scheduled", "estimated", "approved"].map(
-                  (cat) => (
-                    <button
-                      key={cat}
-                      onClick={() => {
-                        setSelectedFilterCategory(cat);
-                        setShowFilterDropdown(false);
-                      }}
-                      className={`w-full text-left px-3 py-1.5 rounded-lg capitalize text-xs font-semibold flex items-center justify-between ${
-                        selectedFilterCategory === cat
-                          ? "bg-red-50 dark:bg-red-950/40 text-[#D31010]"
-                          : "hover:bg-slate-100 dark:hover:bg-slate-800/60"
-                      }`}
-                    >
-                      <span>{cat}</span>
-                      {selectedFilterCategory === cat && <Check className="w-3.5 h-3.5" />}
-                    </button>
-                  )
-                )}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
-
-        <div className="flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-800 rounded-xl">
-          <div className="text-right">
-            <span className="block text-[10px] font-bold text-[#D31010] leading-tight">
-              Recent 30 days including today
-            </span>
-            <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">
-              {dateRangeText}
-            </span>
           </div>
-          <ChevronDown className="w-4 h-4 text-slate-400 cursor-pointer" />
         </div>
+
+        {/* 5-Column Dropdown Popup Panel */}
+        <AnimatePresence>
+          {showFilterDropdown && (
+            <motion.div
+              initial={{ opacity: 0, y: 6, scale: 0.99 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 6, scale: 0.99 }}
+              className="absolute left-0 right-0 top-full mt-2 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-3xl shadow-2xl z-40 p-6 overflow-hidden text-xs"
+            >
+              {/* Quick Search inside Dropdown */}
+              <div className="mb-5 pb-3 border-b border-slate-100 dark:border-slate-800 flex items-center gap-2">
+                <Search className="w-4 h-4 text-slate-400" />
+                <input
+                  type="text"
+                  value={filterSearchText}
+                  onChange={(e) => setFilterSearchText(e.target.value)}
+                  placeholder="Type to search team, tags, lead types, sources, or service areas..."
+                  className="w-full bg-transparent text-xs font-semibold text-slate-800 dark:text-slate-100 focus:outline-none"
+                  autoFocus
+                />
+                {filterSearchText && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterSearchText("")}
+                    className="p-1 text-slate-400 hover:text-slate-600"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* 5 Columns Grid (100% Dynamic from Backend APIs) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-6 max-h-[420px] overflow-y-auto pr-1">
+                {/* 1. TEAM */}
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    TEAM
+                  </div>
+                  <div className="space-y-1">
+                    {filteredTeams.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 italic">No team members found</div>
+                    ) : (
+                      filteredTeams.map((team) => {
+                        const isSelected = activeFilter?.category === "team" && activeFilter?.value === team.name;
+                        return (
+                          <button
+                            key={team.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveFilter({ category: "team", value: team.name, label: team.name });
+                              setShowFilterDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer capitalize ${
+                              isSelected
+                                ? "bg-red-50 dark:bg-red-950/40 text-[#D31010] font-bold"
+                                : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                            }`}
+                          >
+                            {team.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 2. TAGS (Dynamic colors from DB) */}
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    TAGS
+                  </div>
+                  <div className="space-y-1.5 flex flex-col items-start">
+                    {filteredTags.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 italic">No tags found</div>
+                    ) : (
+                      filteredTags.map((tag) => {
+                        const isSelected = activeFilter?.category === "tag" && activeFilter?.value === tag.name;
+                        return (
+                          <button
+                            key={tag.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveFilter({ category: "tag", value: tag.name, label: tag.name });
+                              setShowFilterDropdown(false);
+                            }}
+                            style={{ backgroundColor: tag.color }}
+                            className={`px-3 py-1 text-white text-[11px] font-bold rounded-md shadow-xs hover:opacity-90 transition-opacity cursor-pointer ${
+                              isSelected ? "ring-2 ring-offset-2 ring-[#D31010]" : ""
+                            }`}
+                          >
+                            {tag.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 3. LEAD TYPE */}
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    LEAD TYPE
+                  </div>
+                  <div className="space-y-1">
+                    {filteredTypes.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 italic">No lead types found</div>
+                    ) : (
+                      filteredTypes.map((type) => {
+                        const isSelected = activeFilter?.category === "type" && activeFilter?.value === type.name;
+                        return (
+                          <button
+                            key={type.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveFilter({ category: "type", value: type.name, label: type.name });
+                              setShowFilterDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                              isSelected
+                                ? "bg-red-50 dark:bg-red-950/40 text-[#D31010] font-bold"
+                                : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                            }`}
+                          >
+                            {type.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 4. SOURCE */}
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    SOURCE
+                  </div>
+                  <div className="space-y-1">
+                    {filteredSources.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 italic">No sources found</div>
+                    ) : (
+                      filteredSources.map((source) => {
+                        const isSelected = activeFilter?.category === "source" && activeFilter?.value === source.name;
+                        return (
+                          <button
+                            key={source.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveFilter({ category: "source", value: source.name, label: source.name });
+                              setShowFilterDropdown(false);
+                            }}
+                            className={`w-full text-left px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors cursor-pointer ${
+                              isSelected
+                                ? "bg-red-50 dark:bg-red-950/40 text-[#D31010] font-bold"
+                                : "text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/60"
+                            }`}
+                          >
+                            {source.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* 5. SERVICE AREAS (Dynamic colors from DB) */}
+                <div className="space-y-3">
+                  <div className="text-[11px] font-extrabold text-slate-400 uppercase tracking-wider">
+                    SERVICE AREAS
+                  </div>
+                  <div className="space-y-1.5 flex flex-col items-start">
+                    {filteredAreas.length === 0 ? (
+                      <div className="text-[11px] text-slate-400 italic">No service areas found</div>
+                    ) : (
+                      filteredAreas.map((area) => {
+                        const isSelected = activeFilter?.category === "area" && activeFilter?.value === area.name;
+                        return (
+                          <button
+                            key={area.name}
+                            type="button"
+                            onClick={() => {
+                              setActiveFilter({ category: "area", value: area.name, label: area.name });
+                              setShowFilterDropdown(false);
+                            }}
+                            style={{ backgroundColor: area.color || "#00FFC2" }}
+                            className={`px-3 py-1 text-slate-900 font-bold text-[11px] rounded-md shadow-xs hover:opacity-90 transition-opacity cursor-pointer ${
+                              isSelected ? "ring-2 ring-offset-2 ring-[#D31010]" : ""
+                            }`}
+                          >
+                            {area.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
 
+      {/* Table Container */}
       <div className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden">
+        {/* Table Filter Top Bar */}
         <div className="p-3 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 bg-slate-50/50 dark:bg-slate-900/30">
           <div className="relative w-full sm:w-80">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -393,6 +779,7 @@ export default function LeadsContent() {
             <button
               onClick={() => {
                 fetchLeads();
+                fetchFilterMetadata();
                 toast.success("Leads refreshed");
               }}
               className="p-2 border border-slate-200 dark:border-slate-800 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 transition-colors cursor-pointer"
@@ -414,6 +801,7 @@ export default function LeadsContent() {
           </div>
         </div>
 
+        {/* Table */}
         <div className="w-full overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[1100px]">
             <thead>
@@ -454,7 +842,7 @@ export default function LeadsContent() {
               ) : filteredLeads.length === 0 ? (
                 <tr>
                   <td colSpan={10} className="py-12 text-center text-slate-400">
-                    No leads found. Click "Add new" to create one.
+                    No leads found matching current filter. Click &quot;Add new&quot; to create one.
                   </td>
                 </tr>
               ) : (
@@ -466,11 +854,12 @@ export default function LeadsContent() {
                   return (
                     <tr
                       key={targetId}
-                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors ${
+                      onClick={() => router.push(`/leads/${targetId}`)}
+                      className={`hover:bg-slate-50/80 dark:hover:bg-slate-800/40 transition-colors cursor-pointer ${
                         isChecked ? "bg-red-50/40 dark:bg-red-950/20" : ""
                       }`}
                     >
-                      <td className="py-3.5 px-3 text-center">
+                      <td className="py-3.5 px-3 text-center" onClick={(e) => e.stopPropagation()}>
                         <input
                           type="checkbox"
                           checked={isChecked}
@@ -483,30 +872,22 @@ export default function LeadsContent() {
                         {item.id}
                       </td>
 
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                         <select
                           value={item.status}
                           onChange={(e) => handleStatusChange(targetId, e.target.value)}
-                          className={`px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer outline-hidden capitalize ${
-                            item.status === "new"
-                              ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700"
-                              : item.status === "in progress"
-                              ? "bg-amber-100 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border-amber-300 dark:border-amber-800"
-                              : item.status === "approved"
-                              ? "bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border-emerald-300 dark:border-emerald-800"
-                              : "bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 border-blue-300 dark:border-blue-800"
-                          }`}
+                          className="px-2.5 py-1 rounded-lg text-[11px] font-bold border transition-colors cursor-pointer outline-hidden capitalize bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700"
                         >
-                          <option value="new">new</option>
-                          <option value="in progress">in progress</option>
-                          <option value="scheduled">scheduled</option>
-                          <option value="estimated">estimated</option>
-                          <option value="approved">approved</option>
+                          {leadStatuses.map((ls) => (
+                            <option key={ls._id || ls.name} value={ls.name}>
+                              {ls.name}
+                            </option>
+                          ))}
                         </select>
                       </td>
 
                       <td className="py-3.5 px-4">
-                        <div className="font-bold text-slate-900 dark:text-white">
+                        <div className="font-bold text-slate-900 dark:text-white hover:text-[#D31010] transition-colors">
                           {item.client.name}
                         </div>
                         {item.client.email && (
@@ -524,7 +905,7 @@ export default function LeadsContent() {
                         {item.type}
                       </td>
 
-                      <td className="py-3.5 px-3">
+                      <td className="py-3.5 px-3" onClick={(e) => e.stopPropagation()}>
                         <a
                           href={`tel:${item.phone}`}
                           className="font-bold text-[#D31010] hover:underline"
@@ -541,7 +922,7 @@ export default function LeadsContent() {
                         {item.created}
                       </td>
 
-                      <td className="py-3.5 px-4 text-right">
+                      <td className="py-3.5 px-4 text-right" onClick={(e) => e.stopPropagation()}>
                         <button
                           onClick={() => handleConvertToJob(item)}
                           disabled={isConverting}
@@ -560,6 +941,7 @@ export default function LeadsContent() {
           </table>
         </div>
 
+        {/* Pagination */}
         <div className="p-3 sm:p-4 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500 dark:text-slate-400">
           <span>Showing {filteredLeads.length} of {leads.length} leads</span>
 

@@ -222,7 +222,7 @@ export default function JobsContent() {
         <div className="flex items-center gap-3">
           {/* Add New Button */}
           <button
-            onClick={() => toast.info("Opening New Job Form...")}
+            onClick={() => router.push("/jobs/new")}
             className="px-5 py-2.5 bg-[#D31010] hover:bg-[#b00d0d] text-white text-xs sm:text-sm font-bold rounded-xl shadow-md flex items-center gap-2 transition-all cursor-pointer"
           >
             <Plus className="w-4 h-4" />

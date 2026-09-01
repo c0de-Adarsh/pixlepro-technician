@@ -105,7 +105,7 @@ export default function ViewTimeOffModal({
                     User
                   </span>
                   <span className="text-sm font-extrabold text-slate-900 dark:text-white">
-                    {timeOff.user_name || "charanpal jaggi"}
+                    {timeOff.user_name || "Team Member"}
                   </span>
                 </div>
 

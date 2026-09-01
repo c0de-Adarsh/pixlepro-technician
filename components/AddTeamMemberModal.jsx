@@ -14,6 +14,7 @@ export default function AddTeamMemberModal({ isOpen, onClose, onCreated }) {
   const [phone, setPhone] = useState("");
   const [callMasking, setCallMasking] = useState(false);
   const [permissionLevel, setPermissionLevel] = useState("admin");
+  const [password, setPassword] = useState("123456");
   const [fieldTech, setFieldTech] = useState("Yes");
   const [trackLocation, setTrackLocation] = useState("Yes");
   const [scheduleColor, setScheduleColor] = useState("#D31010");
@@ -31,6 +32,7 @@ export default function AddTeamMemberModal({ isOpen, onClose, onCreated }) {
       name,
       email,
       phone: `${phoneCountry} ${phone}`.trim() || "+1 (555) 000-0000",
+      password: password.trim() || "123456",
       role: memberType === "user" ? permissionLevel : "tech",
       is_field_team: fieldTech.toLowerCase() === "yes",
       user_type: memberType === "user" ? "User" : "Subcontractor",
@@ -194,6 +196,20 @@ export default function AddTeamMemberModal({ isOpen, onClose, onCreated }) {
                 >
                   <Paintbrush className="w-4 h-4 text-white" />
                 </button>
+              </div>
+
+              {/* Field: Password */}
+              <div className="space-y-1">
+                <input
+                  type="text"
+                  placeholder="Login Password (Default: 123456)"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full px-3.5 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-[#D31010]/30"
+                />
+                <p className="text-[11px] text-slate-400 font-semibold pl-1">
+                  Team member will use this password + 2FA OTP (77777) to log in
+                </p>
               </div>
 
               {/* Field 3: Phone + Country Code Flag Dropdown */}

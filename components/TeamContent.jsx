@@ -48,6 +48,7 @@ export default function TeamContent() {
             skills: Array.isArray(u.skills) && u.skills.length > 0 ? u.skills.join(", ") : "Camera Installation",
             areas: Array.isArray(u.areas) && u.areas.length > 0 ? u.areas.join(", ") : "Toronto, Barrie",
             has2FA: Boolean(u.two_factor_enabled),
+            status: u.status || "Active",
           }));
           setTeamMembers(mapped);
         }

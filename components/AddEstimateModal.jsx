@@ -1,21 +1,47 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Search, Loader2, FileSpreadsheet, User, Plus } from "lucide-react";
 import { goeyToast as toast } from "goey-toast";
 import { Api } from "../services/service";
 
-export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAddClient }) {
+export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAddClient, leadId, initialClient }) {
   const router = useRouter();
   const [searchQuery, setSearchQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [clients, setClients] = useState([]);
+  const [loadingClients, setLoadingClients] = useState(false);
 
-  const sampleClients = [
-    { name: "Sarah Jenkins", email: "sarah.j@example.com", phone: "(555) 234-5678" },
-    { name: "TechCorp Inc.", email: "billing@techcorp.com", phone: "(555) 987-6543" },
-    { name: "Riverwood Estates", email: "hoa@riverwood.org", phone: "(555) 456-7890" },
-    { name: "David Chen", email: "d.chen@email.com", phone: "(555) 321-7654" },
-  ];
+  useEffect(() => {
+    if (isOpen) {
+      fetchRealClients();
+    }
+  }, [isOpen]);
+
+  const fetchRealClients = async () => {
+    setLoadingClients(true);
+    try {
+      const res = await Api("GET", "api/clients", null, router);
+      const raw = Array.isArray(res?.data) ? res.data : Array.isArray(res) ? res : [];
+      const mapped = raw.map((c) => {
+        const fullName = `${c.first_name || ""} ${c.last_name || ""}`.trim() || c.company_name || "Client";
+        return {
+          _id: c._id || c.id,
+          name: fullName,
+          company: c.company_name || "",
+          email: c.email || "",
+          phone: c.phone || c.secondary_phone || "",
+          address: c.address || {},
+        };
+      });
+      setClients(mapped);
+    } catch (err) {
+      console.error(err);
+      setClients([]);
+    } finally {
+      setLoadingClients(false);
+    }
+  };
 
   const handleSelectClient = async (client) => {
     setIsSubmitting(true);
@@ -23,28 +49,32 @@ export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAdd
       name: "New Estimate",
       client_name: client.name,
       client_email: client.email,
+      company_name: client.company,
+      phone: client.phone,
       created_by_name: "System",
-      amount: 4500.0,
+      amount: 0.0,
       status: "PENDING",
-      source_job: "No linked job",
+      source_job: leadId ? `Lead #${leadId}` : "No linked job",
       deposit_due: "-",
+      lead_id: leadId || null,
     };
 
     try {
       const res = await Api("POST", "api/estimates", payload, router);
       const createdObj = res?.data || res || {};
+      const newEstId = createdObj._id || createdObj.id;
 
       const newEst = {
-        id: createdObj._id || createdObj.id || "est_new",
-        estimateNumber: createdObj.estimate_number || "EST-2024-1043",
+        id: newEstId || "est_new",
+        estimateNumber: createdObj.estimate_number || "EST-" + Date.now().toString().slice(-4),
         name: createdObj.name || "New Estimate",
         clientName: client.name,
         clientEmail: client.email,
         createdDate: "Just now",
         createdBy: "System",
-        amount: 4500.0,
+        amount: 0.0,
         status: "PENDING",
-        sourceJob: "No linked job",
+        sourceJob: payload.source_job,
         depositDue: "-",
       };
 
@@ -53,17 +83,26 @@ export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAdd
       setSearchQuery("");
       if (onCreated) onCreated(newEst);
       onClose();
+
+      if (newEstId) {
+        router.push(`/estimates/${newEstId}`);
+      }
     } catch (err) {
+      toast.error(err.message || "Failed to create estimate");
       setIsSubmitting(false);
     }
   };
 
-  const filteredClients = sampleClients.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.email.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      c.phone.includes(searchQuery)
-  );
+  const filteredClients = clients.filter((c) => {
+    const q = searchQuery.toLowerCase().trim();
+    if (!q) return true;
+    return (
+      c.name.toLowerCase().includes(q) ||
+      c.company.toLowerCase().includes(q) ||
+      c.email.toLowerCase().includes(q) ||
+      c.phone.includes(q)
+    );
+  });
 
   return (
     <AnimatePresence>
@@ -81,7 +120,7 @@ export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAdd
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            className="relative w-full max-w-lg bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 text-slate-800 dark:text-slate-100 flex flex-col"
+            className="relative w-full max-w-lg bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 text-slate-800 dark:text-slate-100 flex flex-col max-h-[90vh]"
           >
             <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
               <h3 className="text-lg font-bold text-slate-900 dark:text-white tracking-tight">
@@ -96,7 +135,7 @@ export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAdd
               </button>
             </div>
 
-            <div className="p-6 sm:p-8 space-y-6 flex-1 text-center">
+            <div className="p-6 sm:p-8 space-y-6 flex-1 text-center overflow-y-auto">
               <div className="mx-auto w-64 sm:w-72 h-44 rounded-2xl bg-gradient-to-b from-slate-100 to-slate-200/80 dark:from-slate-800 dark:to-slate-900 border border-slate-200 dark:border-slate-700/80 p-3 shadow-inner flex flex-col items-center justify-center relative overflow-hidden group">
                 <div className="w-full bg-white dark:bg-slate-900 rounded-xl p-3 shadow-md border border-slate-200/80 dark:border-slate-800 text-left space-y-2 transform transition-transform group-hover:scale-105">
                   <div className="flex items-center justify-between">
@@ -127,35 +166,49 @@ export default function AddEstimateModal({ isOpen, onClose, onCreated, onOpenAdd
                   <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
                   <input
                     type="text"
-                    placeholder="Name, email or phone"
+                    placeholder="Search name, company, email or phone"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     className="w-full pl-11 pr-4 py-3 bg-slate-50 dark:bg-slate-800/80 border border-slate-300 dark:border-slate-700 rounded-2xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-[#D31010]/30 text-slate-800 dark:text-slate-200 shadow-sm"
                   />
                 </div>
 
-                {searchQuery.trim() !== "" && (
-                  <div className="max-w-md mx-auto max-h-40 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg divide-y divide-slate-100 dark:divide-slate-800 text-left">
-                    {filteredClients.length === 0 ? (
-                      <div className="p-3 text-xs text-slate-400 text-center">No clients found</div>
-                    ) : (
-                      filteredClients.map((client) => (
-                        <button
-                          key={client.email}
-                          type="button"
-                          onClick={() => handleSelectClient(client)}
-                          className="w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center justify-between text-xs cursor-pointer"
-                        >
-                          <div>
-                            <div className="font-bold text-slate-900 dark:text-white">{client.name}</div>
-                            <div className="text-[11px] text-slate-400">{client.email}</div>
+                {/* Clients Selection List */}
+                <div className="max-w-md mx-auto max-h-48 overflow-y-auto bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-lg divide-y divide-slate-100 dark:divide-slate-800 text-left">
+                  {loadingClients ? (
+                    <div className="p-4 text-center text-xs text-slate-400 flex items-center justify-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin text-[#D31010]" />
+                      <span>Loading clients...</span>
+                    </div>
+                  ) : filteredClients.length === 0 ? (
+                    <div className="p-4 text-xs text-slate-400 text-center">
+                      No clients found in database
+                    </div>
+                  ) : (
+                    filteredClients.map((client) => (
+                      <button
+                        key={client._id || client.email || client.name}
+                        type="button"
+                        onClick={() => handleSelectClient(client)}
+                        disabled={isSubmitting}
+                        className="w-full p-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center justify-between text-xs cursor-pointer disabled:opacity-50"
+                      >
+                        <div>
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                            <span>{client.name}</span>
+                            {client.company && (
+                              <span className="text-[10px] font-normal text-slate-400">({client.company})</span>
+                            )}
                           </div>
-                          <span className="text-[10px] font-bold text-[#D31010]">Select →</span>
-                        </button>
-                      ))
-                    )}
-                  </div>
-                )}
+                          <div className="text-[11px] text-slate-400 font-medium">
+                            {client.email || client.phone || "No contact info"}
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-[#D31010]">Select →</span>
+                      </button>
+                    ))
+                  )}
+                </div>
 
                 <div className="flex items-center justify-center gap-3 pt-2 max-w-md mx-auto">
                   <div className="h-px bg-slate-200 dark:bg-slate-800 flex-1" />

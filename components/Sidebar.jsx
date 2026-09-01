@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/router";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -21,10 +21,11 @@ import {
   FileSpreadsheet,
   Receipt,
   BookOpen,
+  ChevronDown,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
-const navItems = [
+const adminNavItems = [
   { id: "home", label: "Home", icon: Home, href: "/" },
   { id: "phone", label: "PiXL Phone", icon: Phone, href: "/phone" },
   { id: "answering", label: "Answering", icon: Headphones, href: "/answering" },
@@ -39,15 +40,46 @@ const navItems = [
   { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
 ];
 
-const bottomNavItems = [
-  { id: "automations", label: "Automations", icon: Zap, href: "/automations" },
-  { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
+const techNavItems = [
+  { id: "schedule", label: "Schedule", icon: Calendar, href: "/schedule" },
+  { id: "map", label: "Map", icon: MapPin, href: "/map" },
+  { id: "jobs", label: "Jobs", icon: Briefcase, href: "/jobs" },
+  { id: "clients", label: "Clients", icon: User, href: "/clients" },
+  { id: "estimates", label: "Estimates", icon: FileSpreadsheet, href: "/estimates" },
+  { id: "invoices", label: "Invoices", icon: Receipt, href: "/invoices" },
+  { id: "price-book", label: "Price book", icon: BookOpen, href: "/price-book" },
+  { id: "reports", label: "Reports", icon: BarChart3, href: "/reports" },
 ];
 
-export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClient, onOpenAddEvent, activeTab = "home" }) {
+export default function Sidebar({
+  isOpen,
+  onClose,
+  onCreateClick,
+  onOpenAddClient,
+  onOpenAddEvent,
+  activeTab = "home",
+}) {
   const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const [showCreateMenu, setShowCreateMenu] = useState(false);
+  const [userRole, setUserRole] = useState("admin");
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem("userDetail");
+      if (stored) {
+        const u = JSON.parse(stored);
+        if (u && (u.role === "tech" || u.role === "technician")) {
+          setUserRole("tech");
+        } else {
+          setUserRole("admin");
+        }
+      }
+    } catch (e) {}
+  }, []);
+
+  const isTech = userRole === "tech";
+  const navItems = isTech ? techNavItems : adminNavItems;
 
   const handleNavClick = (href) => {
     router.push(href);
@@ -60,16 +92,16 @@ export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClien
     <div className="flex flex-col h-full w-full py-5 px-4 text-slate-700 dark:text-slate-200 overflow-y-auto space-y-5">
       {/* Logo */}
       <div className="flex items-center justify-between px-2 mb-1">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
-          <div className="relative h-20 w-60 flex items-center justify-start">
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push(isTech ? "/schedule" : "/")}>
+          <div className="relative h-16 w-52 flex items-center justify-start">
             <img
               src="/Margin (1).png"
               alt="PiXL Pro Logo"
-              className="h-16 object-contain dark:brightness-110"
+              className="h-14 object-contain dark:brightness-110"
               onError={(e) => {
-                e.currentTarget.style.display = 'none';
+                e.currentTarget.style.display = "none";
                 const fallback = e.currentTarget.nextElementSibling;
-                if (fallback) fallback.style.display = 'flex';
+                if (fallback) fallback.style.display = "flex";
               }}
             />
             <div className="hidden items-center gap-1.5 font-bold text-2xl tracking-tight text-slate-900 dark:text-white">
@@ -115,16 +147,18 @@ export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClien
                 exit={{ opacity: 0, y: 5, scale: 0.95 }}
                 className="absolute left-1 right-1 top-full mt-2 bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl py-1.5 z-40 text-slate-800 dark:text-slate-100 overflow-hidden min-w-[170px]"
               >
-                <button
-                  onClick={() => {
-                    setShowCreateMenu(false);
-                    router.push("/leads/new");
-                    if (onClose) onClose();
-                  }}
-                  className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
-                >
-                  Lead
-                </button>
+                {!isTech && (
+                  <button
+                    onClick={() => {
+                      setShowCreateMenu(false);
+                      router.push("/leads/new");
+                      if (onClose) onClose();
+                    }}
+                    className="w-full text-left px-4 py-2 text-sm font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-[#D31010] dark:hover:text-white transition-colors cursor-pointer"
+                  >
+                    Lead
+                  </button>
+                )}
 
                 <button
                   onClick={() => {
@@ -209,7 +243,11 @@ export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClien
                   : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-white/5"
               }`}
             >
-              <Icon className={`w-5 h-5 ${isActive ? "text-[#D31010] dark:text-[#F87171]" : "text-slate-400 dark:text-slate-500"}`} />
+              <Icon
+                className={`w-5 h-5 ${
+                  isActive ? "text-[#D31010] dark:text-[#F87171]" : "text-slate-400 dark:text-slate-500"
+                }`}
+              />
               <span>{item.label}</span>
             </motion.button>
           );
@@ -218,29 +256,64 @@ export default function Sidebar({ isOpen, onClose, onCreateClick, onOpenAddClien
 
       {/* Bottom Features & Settings Section */}
       <div className="space-y-4 pt-4 border-t border-slate-200 dark:border-white/10">
-        <nav className="space-y-1">
-          {bottomNavItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = activeTab === item.id || router.pathname === item.href;
-            return (
-              <motion.button
-                key={item.id}
-                whileHover={{ x: 3 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={() => handleNavClick(item.href)}
-                className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 overflow-hidden ${
-                  isActive
-                    ? "bg-[#FFF0F0] text-[#D31010] font-semibold dark:bg-white/10 dark:text-white border-l-[4px] border-l-[#D31010]"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-white/5"
-                }`}
-              >
-                <Icon className={`w-5 h-5 ${isActive ? "text-[#D31010] dark:text-[#F87171]" : "text-slate-400 dark:text-slate-500"}`} />
-                <span>{item.label}</span>
-              </motion.button>
-            );
-          })}
-        </nav>
+        {isTech ? (
+          /* Technician Features Section (Matching Screenshot) */
+          <div className="space-y-2">
+            <div className="px-3.5 text-[11px] font-extrabold tracking-wider uppercase text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+              <span>Features</span>
+            </div>
+            <div className="px-3.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1">
+              <ChevronDown className="w-3 h-3 text-slate-400" />
+              <span>MY FEATURES</span>
+            </div>
+            <motion.button
+              whileHover={{ x: 3 }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => handleNavClick("/automations")}
+              className={`w-full flex items-center gap-3 px-3.5 py-2 rounded-xl text-xs font-semibold transition-all ${
+                activeTab === "automations" || router.pathname === "/automations"
+                  ? "bg-[#FFF0F0] text-[#D31010] dark:bg-white/10 dark:text-white"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100"
+              }`}
+            >
+              <Zap className="w-4 h-4 text-slate-400" />
+              <span>Automations</span>
+            </motion.button>
+          </div>
+        ) : (
+          /* Admin Bottom Nav Items */
+          <nav className="space-y-1">
+            {[
+              { id: "automations", label: "Automations", icon: Zap, href: "/automations" },
+              { id: "settings", label: "Settings", icon: Settings, href: "/settings" },
+            ].map((item) => {
+              const Icon = item.icon;
+              const isActive = activeTab === item.id || router.pathname === item.href;
+              return (
+                <motion.button
+                  key={item.id}
+                  whileHover={{ x: 3 }}
+                  whileTap={{ scale: 0.98 }}
+                  onClick={() => handleNavClick(item.href)}
+                  className={`w-full flex items-center gap-3.5 px-3.5 py-2.5 rounded-xl font-medium text-sm transition-all duration-200 overflow-hidden ${
+                    isActive
+                      ? "bg-[#FFF0F0] text-[#D31010] font-semibold dark:bg-white/10 dark:text-white border-l-[4px] border-l-[#D31010]"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-white/5"
+                  }`}
+                >
+                  <Icon
+                    className={`w-5 h-5 ${
+                      isActive ? "text-[#D31010] dark:text-[#F87171]" : "text-slate-400 dark:text-slate-500"
+                    }`}
+                  />
+                  <span>{item.label}</span>
+                </motion.button>
+              );
+            })}
+          </nav>
+        )}
 
+        {/* Theme Toggle */}
         <div className="p-3 bg-slate-100/80 dark:bg-black/30 rounded-2xl flex items-center justify-between border border-slate-200/60 dark:border-white/10">
           <div className="flex items-center gap-2.5">
             {theme === "dark" ? (

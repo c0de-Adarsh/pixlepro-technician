@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/router";
 import {
   User as UserIcon,
@@ -21,8 +21,13 @@ import {
   Image as ImageIcon,
   Palette,
   Loader2,
+  Lock,
+  UserX,
+  UserCheck,
 } from "lucide-react";
 import { goeyToast as toast } from "goey-toast";
+import { Api } from "../services/service";
+import ResetPasswordModal from "./ResetPasswordModal";
 
 const COLOR_SWATCHES = [
   "#70FFD0", "#3B82F6", "#2563EB", "#1D4ED8", "#1E3A8A",
@@ -37,7 +42,13 @@ export default function UserSettingsContent({ memberId }) {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("Profile");
   const [isSaving, setIsSaving] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
+  const [isActionsOpen, setIsActionsOpen] = useState(false);
+  const [isResetPasswordOpen, setIsResetPasswordOpen] = useState(false);
+  const actionsRef = useRef(null);
+
+  const [userStatus, setUserStatus] = useState("Active");
   const [userType, setUserType] = useState("Subcontractor");
   const [name, setName] = useState("Edward");
   const [email, setEmail] = useState("policarpioedward95@gmail.com");
@@ -82,6 +93,60 @@ export default function UserSettingsContent({ memberId }) {
     "Example: Name / Position\nCompany name\nPhone number\nWebsite (hyperlinked)"
   );
 
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (actionsRef.current && !actionsRef.current.contains(event.target)) {
+        setIsActionsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  useEffect(() => {
+    if (!memberId) return;
+    const fetchMemberData = async () => {
+      setIsLoading(true);
+      try {
+        const res = await Api("GET", `api/teams/${memberId}`, null, router);
+        const data = res?.data || (res?.status && res?.data) || res;
+        if (data && data._id) {
+          setName(data.name || "");
+          setEmail(data.email || "");
+          setPhone(data.phone || "");
+          setRole(data.role === "admin" ? "Admin" : "Tech");
+          setUserStatus(data.status || "Active");
+          setUserType(data.user_type || "User");
+          if (Array.isArray(data.skills) && data.skills.length > 0) setSkills(data.skills);
+          if (Array.isArray(data.areas) && data.areas.length > 0) setAreas(data.areas);
+          if (data.schedule_color) setSelectedColor(data.schedule_color);
+          if (data.track_location !== undefined) setTrackLocation(data.track_location);
+          if (data.call_masking !== undefined) setCallMasking(data.call_masking);
+        }
+      } catch (e) {}
+      finally {
+        setIsLoading(false);
+      }
+    };
+    fetchMemberData();
+  }, [memberId, router]);
+
+  const handleToggleStatus = async () => {
+    setIsActionsOpen(false);
+    const targetStatus = userStatus === "Active" ? "Inactive" : "Active";
+    try {
+      const res = await Api("PUT", `api/teams/${memberId || email}/status`, { status: targetStatus }, router);
+      if (res?.status || res?.success) {
+        setUserStatus(targetStatus);
+        toast.success(`User has been ${targetStatus === "Active" ? "activated" : "deactivated"} successfully!`);
+      } else {
+        toast.error(res?.error || "Failed to update user status");
+      }
+    } catch (e) {
+      toast.error(e?.error || e?.message || "Error updating user status");
+    }
+  };
+
   const removeSkill = (skillToRemove) => {
     setSkills((prev) => prev.filter((s) => s !== skillToRemove));
     toast.success(`Removed skill "${skillToRemove}"`);
@@ -92,13 +157,34 @@ export default function UserSettingsContent({ memberId }) {
     toast.success(`Removed service area "${areaToRemove}"`);
   };
 
-  const handleSave = (e) => {
+  const handleSave = async (e) => {
     e.preventDefault();
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      const payload = {
+        name,
+        email,
+        phone,
+        role: role.toLowerCase(),
+        user_type: userType,
+        is_field_team: fieldTeamMember,
+        call_masking: callMasking,
+        track_location: trackLocation,
+        schedule_color: selectedColor,
+        skills,
+        areas,
+        status: userStatus,
+      };
+
+      if (memberId) {
+        await Api("PUT", `api/teams/${memberId}`, payload, router);
+      }
       toast.success("User settings updated successfully!");
-    }, 600);
+    } catch (err) {
+      toast.error(err?.error || err?.message || "Error saving user settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -109,33 +195,71 @@ export default function UserSettingsContent({ memberId }) {
 
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div className="flex items-center gap-3">
-          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
-            User Settings
+          <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 dark:text-white tracking-tight flex items-center gap-2.5">
+            <span>User Settings</span>
+            {userStatus === "Inactive" && (
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-900">
+                Deactivated
+              </span>
+            )}
           </h1>
           <button
             type="button"
             onClick={() => toast.info("User Settings Guide")}
-            className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+            className="p-1 rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 cursor-pointer"
           >
             <Info className="w-5 h-5" />
           </button>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3" ref={actionsRef}>
           <div className="relative">
-            <select
-              onChange={(e) => {
-                if (e.target.value) toast.success(`Action: ${e.target.value}`);
-              }}
-              defaultValue=""
-              className="px-4 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full text-xs font-semibold focus:outline-none appearance-none pr-8 cursor-pointer text-slate-800 dark:text-slate-200 shadow-sm"
+            <button
+              type="button"
+              onClick={() => setIsActionsOpen(!isActionsOpen)}
+              className="flex items-center gap-2 px-5 py-2.5 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-full text-xs font-bold text-slate-800 dark:text-slate-200 shadow-sm hover:bg-slate-50 dark:hover:bg-slate-800 transition-all cursor-pointer"
             >
-              <option value="" disabled>Actions</option>
-              <option value="edit">Edit Profile</option>
-              <option value="reset">Reset Password</option>
-              <option value="deactivate">Deactivate User</option>
-            </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <span>Actions</span>
+              <ChevronDown className={`w-4 h-4 text-slate-400 transition-transform ${isActionsOpen ? "rotate-180" : ""}`} />
+            </button>
+
+            {isActionsOpen && (
+              <div className="absolute right-0 mt-2 w-48 bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-slate-200 dark:border-slate-800 py-1.5 z-50 text-xs font-semibold">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsActionsOpen(false);
+                    setIsResetPasswordOpen(true);
+                  }}
+                  className="w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 flex items-center gap-2.5 cursor-pointer transition-colors"
+                >
+                  <Lock className="w-4 h-4 text-slate-400" />
+                  <span>Reset Password</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleToggleStatus}
+                  className={`w-full text-left px-4 py-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2.5 cursor-pointer transition-colors ${
+                    userStatus === "Active"
+                      ? "text-red-600 dark:text-red-400 font-semibold"
+                      : "text-emerald-600 dark:text-emerald-400 font-semibold"
+                  }`}
+                >
+                  {userStatus === "Active" ? (
+                    <>
+                      <UserX className="w-4 h-4 text-red-500" />
+                      <span>Deactivate User</span>
+                    </>
+                  ) : (
+                    <>
+                      <UserCheck className="w-4 h-4 text-emerald-500" />
+                      <span>Activate User</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -405,7 +529,7 @@ export default function UserSettingsContent({ memberId }) {
                       <button
                         type="button"
                         onClick={() => removeSkill(skill)}
-                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -432,7 +556,7 @@ export default function UserSettingsContent({ memberId }) {
                       <button
                         type="button"
                         onClick={() => removeArea(area)}
-                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white"
+                        className="text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
                       >
                         <X className="w-3 h-3" />
                       </button>
@@ -644,6 +768,13 @@ export default function UserSettingsContent({ memberId }) {
           </button>
         </div>
       </form>
+
+      <ResetPasswordModal
+        isOpen={isResetPasswordOpen}
+        onClose={() => setIsResetPasswordOpen(false)}
+        memberId={memberId}
+        userEmail={email}
+      />
     </div>
   );
 }

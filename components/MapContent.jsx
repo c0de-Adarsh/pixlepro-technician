@@ -24,6 +24,8 @@ import { goeyToast as toast } from "goey-toast";
 import { Api } from "../services/service";
 import EditJobDrawer from "./EditJobDrawer";
 
+let inMemoryMapCache = null;
+
 export default function MapContent() {
   const router = useRouter();
   const mapContainerRef = useRef(null);
@@ -38,8 +40,8 @@ export default function MapContent() {
   const [selectedJob, setSelectedJob] = useState(null);
   const [isEditJobDrawerOpen, setIsEditJobDrawerOpen] = useState(false);
 
-  const [jobs, setJobs] = useState([]);
-  const [techs, setTechs] = useState([]);
+  const [jobs, setJobs] = useState(inMemoryMapCache?.jobs || []);
+  const [techs, setTechs] = useState(inMemoryMapCache?.techs || []);
 
   const resolveCoordinates = (addrStr, idx = 0) => {
     const s = String(addrStr || "").toLowerCase();
@@ -63,10 +65,29 @@ export default function MapContent() {
 
     const fetchMapData = async () => {
       try {
-        const teamRes = await Api("GET", "api/teams", null, router);
-        const teamData = teamRes?.data || (Array.isArray(teamRes) ? teamRes : []);
-        if (isMounted && Array.isArray(teamData) && teamData.length > 0) {
-          const mappedTechs = teamData.map((t, idx) => ({
+        let teamData = [];
+        let eventsData = [];
+
+        try {
+          const mapRes = await Api("GET", "api/map/data", null, router);
+          if (mapRes?.data?.events || mapRes?.data?.teams) {
+            eventsData = mapRes.data.events || [];
+            teamData = mapRes.data.teams || [];
+          }
+        } catch (e) {}
+
+        if (eventsData.length === 0 && teamData.length === 0) {
+          const [teamRes, eventsRes] = await Promise.all([
+            Api("GET", "api/teams", null, router).catch(() => null),
+            Api("GET", "api/events", null, router).catch(() => null),
+          ]);
+          teamData = teamRes?.data || (Array.isArray(teamRes) ? teamRes : []);
+          eventsData = eventsRes?.data || (Array.isArray(eventsRes) ? eventsRes : []);
+        }
+
+        let mappedTechs = [];
+        if (Array.isArray(teamData) && teamData.length > 0) {
+          mappedTechs = teamData.map((t, idx) => ({
             id: t._id || t.id || String(idx + 1),
             name: t.name || `${t.first_name || ""} ${t.last_name || ""}`.trim() || "Tech Member",
             status: t.status || "Free",
@@ -76,13 +97,12 @@ export default function MapContent() {
             lat: 49.2827 + (idx * 0.05) - 0.1,
             lng: -123.1207 + (idx * 0.08) - 0.1,
           }));
-          setTechs(mappedTechs);
+          if (isMounted) setTechs(mappedTechs);
         }
 
-        const eventsRes = await Api("GET", "api/events", null, router);
-        const eventsData = eventsRes?.data || (Array.isArray(eventsRes) ? eventsRes : []);
-        if (isMounted && Array.isArray(eventsData) && eventsData.length > 0) {
-          const mappedJobs = eventsData.map((ev, idx) => {
+        let mappedJobs = [];
+        if (Array.isArray(eventsData) && eventsData.length > 0) {
+          mappedJobs = eventsData.map((ev, idx) => {
             const addrObj = ev.address || {};
             const addrStr = typeof addrObj === "object"
               ? `${addrObj.street || ""} ${addrObj.unit || ""} ${addrObj.city || ""} ${addrObj.region || ""}`.trim()
@@ -122,6 +142,8 @@ export default function MapContent() {
           });
           if (isMounted) setJobs(mappedJobs);
         }
+
+        inMemoryMapCache = { jobs: mappedJobs, techs: mappedTechs };
       } catch (err) {}
     };
 

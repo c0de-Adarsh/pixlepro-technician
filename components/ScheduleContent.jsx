@@ -14,8 +14,11 @@ import {
   ExternalLink,
   X,
   Phone,
+  MessageSquare,
   MapPin,
   Trash2,
+  CalendarPlus,
+  GripVertical,
 } from "lucide-react";
 import { goeyToast as toast } from "goey-toast";
 import { Api } from "../services/service";
@@ -32,6 +35,7 @@ export default function ScheduleContent() {
 
   const [jobsList, setJobsList] = useState([]);
   const [timeOffList, setTimeOffList] = useState([]);
+  const [isUnscheduledDrawerOpen, setIsUnscheduledDrawerOpen] = useState(false);
 
   const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
   const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
@@ -50,6 +54,22 @@ export default function ScheduleContent() {
   const [selectedSlotTime12, setSelectedSlotTime12] = useState("01:00 PM");
   const [selectedJobDetails, setSelectedJobDetails] = useState(null);
   const [selectedEventDetails, setSelectedEventDetails] = useState(null);
+  const [availableSubStatuses, setAvailableSubStatuses] = useState([]);
+
+  useEffect(() => {
+    const fetchSubStatuses = async () => {
+      try {
+        const res = await Api("GET", "api/sub-statuses", null, router);
+        const data = res?.data || (Array.isArray(res) ? res : []);
+        if (Array.isArray(data)) {
+          setAvailableSubStatuses(data);
+        }
+      } catch (e) {
+        console.error("SubStatus fetch error:", e);
+      }
+    };
+    fetchSubStatuses();
+  }, [router]);
 
   const formatToYMD = (dNum) => {
     const y = currentDate.getFullYear();
@@ -119,6 +139,7 @@ export default function ScheduleContent() {
             const formattedAddr = typeof addr === "object"
               ? `${addr.street || ""} ${addr.unit || ""}, ${addr.city || ""}, ${addr.region || ""} ${addr.postal_code || ""}`.trim()
               : (e.address || "");
+            const isUnscheduled = e.is_scheduled === false || String(e.status).toLowerCase() === "unscheduled" || e.schedule_status === "unscheduled" || (!e.schedule?.start_date && !e.schedule?.start_time);
             return {
               id: e._id || e.id || "1065",
               _id: e._id || e.id || "1065",
@@ -131,16 +152,21 @@ export default function ScheduleContent() {
               tech: e.assigned_tech || (Array.isArray(e.assigned_techs) ? e.assigned_techs[0] : (Array.isArray(e.team_members) ? e.team_members[0] : "PIXL TECHNICIAN")),
               assignedTechs: Array.isArray(e.assigned_techs) && e.assigned_techs.length > 0 ? e.assigned_techs : (Array.isArray(e.team_members) ? e.team_members : ["PIXL TECHNICIAN"]),
               status: e.status || (isEvent ? "Open" : "Submitted"),
+              status_color: e.status_color || "",
+              sub_status: e.sub_status || "",
               isEvent,
+              isUnscheduled,
+              is_scheduled: !isUnscheduled,
+              schedule_status: isUnscheduled ? "unscheduled" : "scheduled",
               jobType: e.job_type || "",
               serviceArea: e.service_area || "Edmonton",
               total_amount: e.total_amount || 0,
               balance_due: e.total_amount || 0,
               notes: e.description || "",
               description: e.description || "",
-              startDate: e.schedule?.start_date ? String(e.schedule.start_date).split("T")[0] : "2026-08-20",
+              startDate: e.schedule?.start_date ? String(e.schedule.start_date).split("T")[0] : (isUnscheduled ? "" : "2026-08-20"),
               startTime: e.schedule?.start_time || "07:45 AM",
-              endDate: e.schedule?.end_date ? String(e.schedule.end_date).split("T")[0] : "2026-08-20",
+              endDate: e.schedule?.end_date ? String(e.schedule.end_date).split("T")[0] : (isUnscheduled ? "" : "2026-08-20"),
               endTime: e.schedule?.end_time || "07:50 AM",
               isAllDay: e.schedule?.is_all_day || false,
             };
@@ -271,13 +297,22 @@ export default function ScheduleContent() {
         ];
   }, [scheduleSettings.visible_start_hour, scheduleSettings.visible_end_hour]);
 
+  const unscheduledJobs = useMemo(() => {
+    return jobsList.filter((j) => j.isUnscheduled || j.is_scheduled === false || String(j.status).toLowerCase() === "unscheduled" || !j.startDate);
+  }, [jobsList]);
+
+  const scheduledJobs = useMemo(() => {
+    return jobsList.filter((j) => !j.isUnscheduled && j.is_scheduled !== false && String(j.status).toLowerCase() !== "unscheduled" && Boolean(j.startDate));
+  }, [jobsList]);
+
   const visibleJobs = useMemo(() => {
-    if (scheduleSettings.show_done_jobs) return jobsList;
-    return jobsList.filter((j) => {
+    const list = scheduledJobs;
+    if (scheduleSettings.show_done_jobs) return list;
+    return list.filter((j) => {
       const st = String(j.status || "").toLowerCase();
       return st !== "done" && st !== "completed";
     });
-  }, [jobsList, scheduleSettings.show_done_jobs]);
+  }, [scheduledJobs, scheduleSettings.show_done_jobs]);
 
   const timelineHours = [
     "01 AM", "02 AM", "03 AM", "04 AM", "05 AM", "06 AM", "07 AM", "08 AM",
@@ -460,6 +495,10 @@ export default function ScheduleContent() {
         if ((j._id || j.id) === targetId) {
           return {
             ...j,
+            isUnscheduled: false,
+            is_scheduled: true,
+            schedule_status: "scheduled",
+            status: j.status === "Unscheduled" ? "Submitted" : j.status,
             startDate: newDateStr,
             endDate: newDateStr,
             startTime: updatedTime,
@@ -472,6 +511,9 @@ export default function ScheduleContent() {
 
     try {
       const payload = {
+        is_scheduled: true,
+        schedule_status: "scheduled",
+        status: draggedJob.status === "Unscheduled" ? "Submitted" : draggedJob.status,
         schedule: {
           start_date: newDateStr,
           start_time: updatedTime,
@@ -482,7 +524,7 @@ export default function ScheduleContent() {
       };
       const res = await Api("PUT", `api/events/${targetId}`, payload, router);
       if (res && (res.success || res.data || res._id)) {
-        toast.success(`Rescheduled to ${newDateStr} at ${targetHourStr}`);
+        toast.success(`Scheduled to ${newDateStr} at ${targetHourStr}`);
         fetchEvents();
       } else {
         toast.error(res?.message || "Failed to update schedule");
@@ -525,25 +567,32 @@ export default function ScheduleContent() {
     return text.trim() || `${job.clientName} ${job.companyName}`;
   };
 
+  const getJobStatusColorHex = (job) => {
+    if (job.isEvent) return "#334155";
+    if (job.status_color) return job.status_color;
+
+    const st = String(job.status || "").toLowerCase().trim();
+    const subSt = String(job.sub_status || "").toLowerCase().trim();
+
+    const foundSub = availableSubStatuses.find(
+      (s) =>
+        (s.name || "").toLowerCase().trim() === st ||
+        (s.name || "").toLowerCase().trim() === subSt
+    );
+    if (foundSub && foundSub.color) return foundSub.color;
+
+    if (st.includes("progress")) return "#8B5CF6";
+    if (st.includes("cancel")) return "#EF4444";
+    if (st.includes("complete") || st === "done") return "#10B981";
+    if (st === "pending" || (st.includes("pending") && !st.includes("approval"))) return "#F59E0B";
+    if (st.includes("approval") || st.includes("done pending")) return "#2563EB";
+    if (st.includes("submit") || st === "open" || st === "new") return "#3B82F6";
+
+    return "#3B82F6";
+  };
+
   const getJobCardColor = (job) => {
-    if (job.isEvent) {
-      return "bg-slate-700 hover:bg-slate-800 text-white border-slate-400 hover:ring-2 hover:ring-slate-400";
-    }
-    const colorMode = scheduleSettings.appointment_color_by || "Tech";
-    if (colorMode === "Status") {
-      const st = String(job.status || "").toLowerCase();
-      if (st.includes("complete") || st.includes("done")) return "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-300";
-      if (st.includes("in progress")) return "bg-amber-600 hover:bg-amber-700 text-white border-amber-300";
-      if (st.includes("cancel")) return "bg-slate-600 hover:bg-slate-700 text-white border-slate-300";
-      return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 border-white/50";
-    }
-    if (colorMode === "Job type") {
-      const jt = String(job.jobType || "").toLowerCase();
-      if (jt.includes("install")) return "bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-300";
-      if (jt.includes("repair")) return "bg-orange-600 hover:bg-orange-700 text-white border-orange-300";
-      return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 border-white/50";
-    }
-    return "bg-[#D31010] hover:bg-[#b00d0d] text-white shadow-red-500/20 hover:ring-2 hover:ring-red-400 border-white/50";
+    return "";
   };
 
   const renderTimeOffPill = (to, dayObj) => {
@@ -709,16 +758,56 @@ export default function ScheduleContent() {
             setSelectedJobDetails(job);
           }
         }}
-        className={`p-2 rounded-xl text-[11px] font-bold shadow-md cursor-grab active:cursor-grabbing border-l-4 transition-all z-10 my-0.5 select-none ${
+        style={{ backgroundColor: getJobStatusColorHex(job) }}
+        className={`p-2 rounded-xl text-[11px] font-bold shadow-md cursor-grab active:cursor-grabbing border-l-4 border-white/40 hover:brightness-110 transition-all z-10 my-0.5 select-none text-white ${
           isCurrentlyDragged ? "opacity-30 scale-95" : "opacity-100"
-        } ${getJobCardColor(job)}`}
+        }`}
       >
         <div className="font-extrabold text-white text-xs">
           {isEv ? "Event" : `Job ID: ${job.jobId}`}
         </div>
-        <div className={`text-[10px] truncate ${isEv ? "text-slate-300 font-semibold" : "text-red-100"}`}>
+        <div className="text-[10px] truncate text-white/90 font-semibold">
           {formatJobCardText(job)}
         </div>
+      </div>
+    );
+  };
+
+  const renderMonthJobItem = (job) => {
+    const isEv = job.isEvent;
+    const colorHex = getJobStatusColorHex(job);
+    const timeStr = job.startTime || "09:00 AM";
+    const badgeText = job.jobType || job.status || (isEv ? "Event" : "Job");
+    const titleText = job.clientName || job.title || "";
+
+    return (
+      <div
+        key={job._id || job.id}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isEv) setSelectedEventDetails(job);
+          else setSelectedJobDetails(job);
+        }}
+        className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 px-1.5 py-0.5 rounded-md transition-colors cursor-pointer group truncate"
+      >
+        <span
+          className="w-1.5 h-1.5 rounded-full shrink-0"
+          style={{ backgroundColor: colorHex }}
+        />
+        <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 shrink-0">
+          {timeStr}
+        </span>
+        <span
+          className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded text-white shrink-0 shadow-2xs"
+          style={{ backgroundColor: colorHex }}
+        >
+          {badgeText}
+        </span>
+        {titleText && (
+          <span className="text-[10px] text-slate-700 dark:text-slate-300 font-medium truncate">
+            {titleText}
+          </span>
+        )}
       </div>
     );
   };
@@ -789,24 +878,41 @@ export default function ScheduleContent() {
           <div className="flex items-center gap-1 border-l border-slate-200 dark:border-slate-800 pl-2">
             <button
               type="button"
+              onClick={() => setIsUnscheduledDrawerOpen(!isUnscheduledDrawerOpen)}
+              className={`p-2 rounded-xl transition-all relative cursor-pointer flex items-center justify-center ${
+                isUnscheduledDrawerOpen
+                  ? "bg-[#D31010] text-white shadow-md shadow-red-500/20"
+                  : "text-slate-500 hover:text-[#D31010] hover:bg-slate-100 dark:hover:bg-slate-800"
+              }`}
+              title="Unscheduled Jobs"
+            >
+              <CalendarIcon className="w-4 h-4" />
+              {unscheduledJobs.length > 0 && (
+                <span className="absolute -top-1 -right-1 px-1.5 py-0.2 text-[10px] font-black bg-[#D31010] text-white rounded-full min-w-[17px] text-center border-2 border-white dark:border-[#0E1E31] shadow-xs">
+                  {unscheduledJobs.length}
+                </span>
+              )}
+            </button>
+            <button
+              type="button"
               onClick={() => toast.success("Calendar filter view")}
               className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              <CalendarIcon className="w-4 h-4" />
+              <SlidersHorizontal className="w-4 h-4" />
             </button>
             <button
               type="button"
               onClick={() => router.push("/settings/schedule")}
               className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
-              <SlidersHorizontal className="w-4 h-4" />
+              <Clock className="w-4 h-4" />
             </button>
           </div>
         </div>
       </div>
 
-      {/* CALENDAR VIEW CONTAINER */}
-      <div className="bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
+      {/* CALENDAR VIEW CONTAINER (FULL WIDTH) */}
+      <div className="w-full bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-sm overflow-hidden">
         {/* VIEW 1: DAY VIEW */}
         {viewMode === "day" && (
           <div className="overflow-x-auto">
@@ -1006,7 +1112,21 @@ export default function ScheduleContent() {
                         </span>
 
                         {dayJobs.length > 0 && (
-                          <div className="mt-1 space-y-1">{dayJobs.map(renderJobPill)}</div>
+                          <div className="mt-1 space-y-0.5">
+                            {dayJobs.slice(0, 3).map(renderMonthJobItem)}
+                            {dayJobs.length > 3 && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleCellClick(`${cellObj.dateStr}`, cellObj.date, "9 AM", cellObj.dateStr);
+                                }}
+                                className="text-[10px] font-extrabold text-blue-600 dark:text-blue-400 hover:underline pl-1 cursor-pointer block"
+                              >
+                                View more ({dayJobs.length - 3})
+                              </button>
+                            )}
+                          </div>
                         )}
 
                         {dayTimeOffs.length > 0 && (
@@ -1131,7 +1251,116 @@ export default function ScheduleContent() {
             </div>
           </div>
         )}
-      </div>
+        </div>
+
+        {/* UNSCHEDULED JOBS SLIDE-OVER DRAWER (MATCHING SCREENSHOT 3) */}
+        <AnimatePresence>
+          {isUnscheduledDrawerOpen && (
+            <div className="fixed inset-0 z-50 flex justify-end overflow-hidden pointer-events-none">
+              {/* Optional transparent backdrop for mobile click-outside */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsUnscheduledDrawerOpen(false)}
+                className="fixed inset-0 bg-black/20 backdrop-blur-xs lg:hidden pointer-events-auto"
+              />
+
+              {/* Right Slide-over Panel (Compact ~300px width matching Workiz screenshot) */}
+              <motion.div
+                initial={{ x: "100%" }}
+                animate={{ x: 0 }}
+                exit={{ x: "100%" }}
+                transition={{ type: "spring", damping: 25, stiffness: 250 }}
+                className="relative w-72 sm:w-80 bg-white dark:bg-[#0E1E31] border-l border-slate-200 dark:border-slate-800 shadow-2xl z-10 pointer-events-auto flex flex-col h-full overflow-hidden"
+              >
+                <div className="p-3.5 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-extrabold text-slate-900 dark:text-white tracking-tight">
+                      Unscheduled jobs
+                    </h3>
+                    <span className="w-5 h-5 flex items-center justify-center text-[11px] font-black bg-[#D31010] text-white rounded-full shadow-xs">
+                      {unscheduledJobs.length}
+                    </span>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsUnscheduledDrawerOpen(false)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="p-3 space-y-2.5 overflow-y-auto flex-1">
+                  {unscheduledJobs.length === 0 ? (
+                    <div className="py-16 px-4 text-center">
+                      <div className="w-12 h-12 mx-auto mb-2 rounded-full bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-400">
+                        <CalendarIcon className="w-6 h-6" />
+                      </div>
+                      <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                        No unscheduled jobs
+                      </p>
+                      <p className="text-[11px] text-slate-400 mt-0.5">
+                        All jobs are scheduled
+                      </p>
+                    </div>
+                  ) : (
+                    unscheduledJobs.map((job, idx) => {
+                      const cardColor = getJobStatusColorHex(job);
+                      
+                      const hex = (cardColor || "#3B82F6").replace("#", "");
+                      const r = parseInt(hex.substring(0, 2), 16) || 59;
+                      const g = parseInt(hex.substring(2, 4), 16) || 130;
+                      const b = parseInt(hex.substring(4, 6), 16) || 246;
+
+                      const pastelStyle = {
+                        backgroundColor: `rgba(${r}, ${g}, ${b}, 0.18)`,
+                        borderColor: `rgba(${r}, ${g}, ${b}, 0.55)`,
+                      };
+
+                      return (
+                        <div
+                          key={job._id || job.id || idx}
+                          draggable
+                          onDragStart={(e) => {
+                            e.dataTransfer.setData("application/json", JSON.stringify(job));
+                            setDraggedJobId(job._id || job.id);
+                          }}
+                          onDragEnd={() => setDraggedJobId(null)}
+                          onClick={() => setSelectedJobDetails(job)}
+                          style={pastelStyle}
+                          className="p-3 rounded-xl border shadow-2xs hover:shadow-md transition-all cursor-pointer space-y-1 group select-none relative"
+                        >
+                          <div className="flex items-start justify-between gap-1.5">
+                            <div className="font-extrabold text-xs text-slate-900 dark:text-white truncate">
+                              Job #{job.jobId} {job.title ? `– ${job.title}` : ""}
+                            </div>
+                            <div className="flex-shrink-0 text-slate-400 group-hover:text-[#D31010] transition-colors">
+                              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                              </svg>
+                            </div>
+                          </div>
+
+                          <div className="text-[11px] font-semibold text-slate-700 dark:text-slate-300 truncate">
+                            {job.jobType || "Service Call"}
+                          </div>
+
+                          <div className="text-[11px] font-medium text-slate-600 dark:text-slate-400 truncate">
+                            {job.clientName} {job.companyName ? `(${job.companyName})` : ""}
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
       {/* Choice Modal */}
       <CreateChoiceModal
@@ -1222,12 +1451,12 @@ export default function ScheduleContent() {
               initial={{ opacity: 0, scale: 0.95, y: 10 }}
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="relative w-full max-w-sm bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-3xl shadow-2xl overflow-hidden z-10 text-slate-800 dark:text-slate-100"
+              className="relative w-full max-w-sm bg-white dark:bg-[#0E1E31] border border-slate-200/90 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden z-10 text-slate-800 dark:text-slate-100"
             >
               {/* Header */}
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
-                <h3 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-1.5">
-                  Job ID: {selectedJobDetails.jobId} {selectedJobDetails.title}
+              <div className="flex items-center justify-between px-5 py-3.5 border-b border-slate-100 dark:border-slate-800">
+                <h3 className="text-sm font-black text-slate-900 dark:text-white">
+                  Job ID: {selectedJobDetails.jobId || "426"}
                 </h3>
                 <div className="flex items-center gap-2">
                   <button
@@ -1237,104 +1466,143 @@ export default function ScheduleContent() {
                       setSelectedJobDetails(null);
                       setIsEditJobDrawerOpen(true);
                     }}
-                    className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer transition-colors"
+                    title="Edit Job"
                   >
                     <Edit2 className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
-                    onClick={() => router.push(`/jobs/${selectedJobDetails.id}`)}
-                    className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                    onClick={() => router.push(`/jobs/${selectedJobDetails._id || selectedJobDetails.id}`)}
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer transition-colors"
+                    title="Open full page"
                   >
                     <ExternalLink className="w-4 h-4" />
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelectedJobDetails(null)}
-                    className="p-1 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                    className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer transition-colors"
                   >
                     <X className="w-4 h-4" />
                   </button>
                 </div>
               </div>
 
-              <div className="p-5 space-y-4 text-xs font-semibold">
+              <div className="p-5 space-y-3.5 text-xs font-semibold">
                 {/* CLIENT */}
                 <div>
-                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-0.5">
+                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-1 tracking-wider">
                     CLIENT
                   </span>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
-                      <div className="font-extrabold text-slate-900 dark:text-white">
-                        {selectedJobDetails.clientName}
+                      <div className="font-extrabold text-slate-900 dark:text-white text-xs">
+                        {selectedJobDetails.clientName || "UR CHANNEL UR-OPP-01098"} {selectedJobDetails.companyName ? `(${selectedJobDetails.companyName})` : "(UR-OPP-01110)"}
                       </div>
-                      <div className="text-slate-500 font-bold">
-                        ({selectedJobDetails.companyName})
-                      </div>
-                      <div className="text-[#4B9EFF] font-bold mt-0.5">
-                        {selectedJobDetails.phone}
-                      </div>
+                      {selectedJobDetails.phone && (
+                        <div className="text-[#4B9EFF] font-bold mt-0.5">
+                          {selectedJobDetails.phone}
+                        </div>
+                      )}
                     </div>
-                    <a
-                      href={`tel:${selectedJobDetails.phone}`}
-                      className="p-2 border border-slate-200 dark:border-slate-700 rounded-full text-[#4B9EFF] hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      <Phone className="w-4 h-4" />
-                    </a>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/messages")}
+                        className="p-1.5 text-[#4B9EFF] hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                        title="Send Message"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      {selectedJobDetails.phone && (
+                        <a
+                          href={`tel:${selectedJobDetails.phone}`}
+                          className="p-1.5 text-[#4B9EFF] hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                          title="Call Client"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* STATUS */}
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-0.5">
-                    SCHEDULED
-                  </span>
-                  <div className="text-slate-800 dark:text-slate-200 font-extrabold">
-                    Thu Aug 20th 7:45 AM - 7:50 AM
-                  </div>
-                </div>
-
-                <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-0.5">
+                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-1 tracking-wider">
                     STATUS
                   </span>
-                  <div className="flex items-center gap-1.5 text-slate-900 dark:text-white font-extrabold">
-                    <span className="w-2 h-2 rounded-full bg-[#4B9EFF]" />
-                    <span>{selectedJobDetails.status}</span>
+                  <div className="flex items-center gap-1.5 text-slate-800 dark:text-slate-200 font-bold">
+                    <span className="w-2 h-2 rounded-full bg-slate-400 dark:bg-slate-500" />
+                    <span>{selectedJobDetails.status || "done pending approval"}</span>
                   </div>
                 </div>
 
+                {/* ADDRESS */}
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-0.5">
+                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-1 tracking-wider">
                     ADDRESS
                   </span>
-                  <div className="text-slate-700 dark:text-slate-300 font-bold leading-relaxed">
-                    {selectedJobDetails.address}
-                  </div>
+                  <a
+                    href={`https://maps.google.com/?q=${encodeURIComponent(selectedJobDetails.address || "")}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block text-slate-700 dark:text-slate-300 font-bold leading-relaxed hover:text-[#D31010] dark:hover:text-[#D31010] transition-colors"
+                  >
+                    {selectedJobDetails.address || "295 Regional Road 77 #F1, St. Catharines, Ontario L2R 6P9"}
+                  </a>
                 </div>
 
+                {/* ASSIGNED TECH */}
                 <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-0.5">
+                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-1 tracking-wider">
                     ASSIGNED TECH
                   </span>
                   <div className="flex items-center justify-between">
-                    <div className="text-slate-900 dark:text-white font-extrabold uppercase">
-                      {selectedJobDetails.tech}
+                    <div className="text-slate-900 dark:text-white font-extrabold">
+                      {selectedJobDetails.tech || "Gbenga"}
                     </div>
-                    <a
-                      href={`tel:${selectedJobDetails.phone}`}
-                      className="p-2 border border-slate-200 dark:border-slate-700 rounded-full text-[#4B9EFF] hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer"
-                    >
-                      <Phone className="w-4 h-4" />
-                    </a>
+
+                    <div className="flex items-center gap-1 flex-shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => router.push("/messages")}
+                        className="p-1.5 text-[#4B9EFF] hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                        title="Send Message"
+                      >
+                        <MessageSquare className="w-4 h-4" />
+                      </button>
+                      {selectedJobDetails.phone && (
+                        <a
+                          href={`tel:${selectedJobDetails.phone}`}
+                          className="p-1.5 text-[#4B9EFF] hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg transition-colors cursor-pointer"
+                          title="Call Tech"
+                        >
+                          <Phone className="w-4 h-4" />
+                        </a>
+                      )}
+                    </div>
                   </div>
                 </div>
 
+                {/* TAGS */}
+                <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                  <span className="block text-[10px] font-extrabold text-slate-400 uppercase mb-1.5 tracking-wider">
+                    TAGS
+                  </span>
+                  <span className="px-3 py-1 bg-amber-400 text-slate-900 font-extrabold text-[11px] rounded-md inline-block uppercase">
+                    {selectedJobDetails.tag || "UR-CHANNEL"}
+                  </span>
+                </div>
+
+                {/* Add tasks to this job */}
                 <div className="pt-2">
                   <button
                     type="button"
-                    onClick={() => toast.success("Tasks section opened")}
-                    className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-[#4B9EFF] text-xs font-extrabold rounded-xl transition-colors cursor-pointer"
+                    onClick={() => router.push(`/jobs/${selectedJobDetails._id || selectedJobDetails.id}?tab=tasks`)}
+                    className="w-full py-2.5 bg-blue-50 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-[#4B9EFF] text-xs font-extrabold rounded-xl transition-colors cursor-pointer flex items-center justify-center gap-1.5"
                   >
                     Add tasks to this job
                   </button>
