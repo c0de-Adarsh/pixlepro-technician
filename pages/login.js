@@ -271,9 +271,9 @@ export default function LoginPage() {
           <div className="flex flex-col items-center text-center mb-6">
             <div className="relative h-14 w-52 mb-2 flex items-center justify-center">
               <img
-                src="/Margin (1).png"
+                src={theme === "dark" ? "/transparentlogo.png" : "/Margin (1).png"}
                 alt="PiXL Pro Logo"
-                className="h-13 object-contain dark:brightness-110"
+                className="h-13 object-contain"
                 onError={(e) => {
                   e.currentTarget.style.display = "none";
                   const fallback = e.currentTarget.nextElementSibling;

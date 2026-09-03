@@ -7,10 +7,14 @@ import {
   Download,
   Plus,
   ChevronDown,
+  ChevronUp,
   PhoneCall,
   X,
   ChevronLeft,
-  ChevronRight
+  ChevronRight,
+  Sparkles,
+  Check,
+  Filter,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
 
@@ -56,10 +60,183 @@ const sampleCallsData = [
   },
 ];
 
+const workizDateOptions = [
+  "Custom",
+  "Today",
+  "Yesterday",
+  "Last 7 days",
+  "Last 14 days",
+  "Last 30 days",
+  "Last month",
+  "This month",
+  "This year",
+  "Last year",
+  "This week (Sun-Today)",
+  "This week (Mon-Today)",
+  "Last week (Sun-Sat)",
+  "Last week (Mon-Sun)",
+  "Last business week (Mon-Fri)",
+];
+
+function getDateSubtext(preset, customStart, customEnd) {
+  const now = new Date();
+
+  const getOrdinal = (n) => {
+    const s = ["th", "st", "nd", "rd"];
+    const v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  };
+
+  const formatWithOrdinal = (date) => {
+    if (!date || isNaN(date.getTime())) return "";
+    const month = date.toLocaleDateString("en-US", { month: "short" });
+    const day = getOrdinal(date.getDate());
+    const year = date.getFullYear();
+    return `${month} ${day}, ${year}`;
+  };
+
+  if (preset === "Custom") {
+    if (customStart && customEnd) {
+      return `${formatWithOrdinal(new Date(customStart))} – ${formatWithOrdinal(new Date(customEnd))}`;
+    }
+    return "Select custom range";
+  }
+
+  if (preset === "Today") {
+    return `${formatWithOrdinal(now)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Yesterday") {
+    const y = new Date();
+    y.setDate(now.getDate() - 1);
+    return `${formatWithOrdinal(y)} – ${formatWithOrdinal(y)}`;
+  }
+
+  if (preset === "Last 7 days") {
+    const s = new Date();
+    s.setDate(now.getDate() - 6);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Last 14 days") {
+    const s = new Date();
+    s.setDate(now.getDate() - 13);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Last 30 days") {
+    const s = new Date();
+    s.setDate(now.getDate() - 29);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Last month") {
+    const s = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const e = new Date(now.getFullYear(), now.getMonth(), 0);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(e)}`;
+  }
+
+  if (preset === "This month") {
+    const s = new Date(now.getFullYear(), now.getMonth(), 1);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "This year") {
+    const s = new Date(now.getFullYear(), 0, 1);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Last year") {
+    const s = new Date(now.getFullYear() - 1, 0, 1);
+    const e = new Date(now.getFullYear() - 1, 11, 31);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(e)}`;
+  }
+
+  if (preset === "This week (Sun-Today)") {
+    const s = new Date();
+    s.setDate(now.getDate() - now.getDay());
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "This week (Mon-Today)") {
+    const day = now.getDay();
+    const diff = now.getDate() - (day === 0 ? 6 : day - 1);
+    const s = new Date();
+    s.setDate(diff);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(now)}`;
+  }
+
+  if (preset === "Last week (Sun-Sat)") {
+    const s = new Date();
+    s.setDate(now.getDate() - now.getDay() - 7);
+    const e = new Date(s);
+    e.setDate(s.getDate() + 6);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(e)}`;
+  }
+
+  if (preset === "Last week (Mon-Sun)") {
+    const day = now.getDay();
+    const diff = now.getDate() - (day === 0 ? 6 : day - 1) - 7;
+    const s = new Date();
+    s.setDate(diff);
+    const e = new Date(s);
+    e.setDate(s.getDate() + 6);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(e)}`;
+  }
+
+  if (preset === "Last business week (Mon-Fri)") {
+    const day = now.getDay();
+    const diff = now.getDate() - (day === 0 ? 6 : day - 1) - 7;
+    const s = new Date();
+    s.setDate(diff);
+    const e = new Date(s);
+    e.setDate(s.getDate() + 4);
+    return `${formatWithOrdinal(s)} – ${formatWithOrdinal(e)}`;
+  }
+
+  return `${formatWithOrdinal(now)} – ${formatWithOrdinal(now)}`;
+}
+
+const filterCategories = [
+  { id: "direction", label: "Direction", searchPlaceholder: "Search direction" },
+  { id: "status", label: "Status", searchPlaceholder: "Search status" },
+  { id: "duration", label: "Duration", searchPlaceholder: "Search duration" },
+  { id: "jobStatus", label: "Job Status", searchPlaceholder: "Search job status" },
+  { id: "callFlow", label: "Call Flow", searchPlaceholder: "Search call flow" },
+  { id: "adGroup", label: "Ad Group", searchPlaceholder: "Search ad group" },
+  { id: "user", label: "User", searchPlaceholder: "Search user" },
+];
+
+const categoryOptionsMap = {
+  direction: ["Outgoing calls", "Incoming calls"],
+  status: [
+    "Answered",
+    "Missed",
+    "Active",
+    "Voicemail",
+    "Show also blocked calls",
+    "Missed - Response needed",
+  ],
+  duration: [
+    "All durations",
+    "Under 30 seconds",
+    "30 seconds to 2 minutes",
+    "2 to 5 minutes",
+    "Over 5 minutes",
+  ],
+  jobStatus: ["Booked", "Completed", "Cancelled", "Unassigned"],
+  callFlow: ["Main IVR", "Support Queue", "Forward to Chara...", "Direct Call"],
+  adGroup: ["Google Ads", "Facebook", "Organic"],
+  user: ["Alex Rivera", "Marvin Farouse", "Des Spence", "Admin"],
+};
+
 export default function PixlPhoneContent() {
   const { theme } = useTheme();
   const [activeSubTab, setActiveSubTab] = useState("Calls");
-  const [dateRange, setDateRange] = useState("Aug 11th, 2026 - Aug 11th, 2026");
+  const [selectedPreset, setSelectedPreset] = useState("Today");
+  const [customStart, setCustomStart] = useState("");
+  const [customEnd, setCustomEnd] = useState("");
+  const [showCustomModal, setShowCustomModal] = useState(false);
   const [showDateDropdown, setShowDateDropdown] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [rowsPerPage, setRowsPerPage] = useState("10");
@@ -69,6 +246,48 @@ export default function PixlPhoneContent() {
   const [callsList, setCallsList] = useState([]);
   const [newPhoneNumber, setNewPhoneNumber] = useState("");
   const [isCalling, setIsCalling] = useState(false);
+
+  // Workiz Filter System State
+  const [showAddFilterDropdown, setShowAddFilterDropdown] = useState(false);
+  const [filterSearchQuery, setFilterSearchQuery] = useState("");
+  const [activeFilterPills, setActiveFilterPills] = useState([]);
+  const [openPillId, setOpenPillId] = useState(null);
+  const [pillSearchMap, setPillSearchMap] = useState({});
+
+  const handleSelectFilterCategory = (cat) => {
+    setShowAddFilterDropdown(false);
+    setFilterSearchQuery("");
+    if (!activeFilterPills.some((p) => p.id === cat.id)) {
+      setActiveFilterPills((prev) => [
+        ...prev,
+        { ...cat, selected: [] },
+      ]);
+    }
+    setOpenPillId(cat.id);
+  };
+
+  const handleTogglePillOption = (pillId, option) => {
+    setActiveFilterPills((prev) =>
+      prev.map((pill) => {
+        if (pill.id !== pillId) return pill;
+        const allOpts = categoryOptionsMap[pillId] || [];
+        if (option === "Select All") {
+          const isAllSelected = pill.selected.length === allOpts.length;
+          return { ...pill, selected: isAllSelected ? [] : [...allOpts] };
+        }
+        const exists = pill.selected.includes(option);
+        const newSel = exists
+          ? pill.selected.filter((o) => o !== option)
+          : [...pill.selected, option];
+        return { ...pill, selected: newSel };
+      })
+    );
+  };
+
+  const handleRemoveFilterPill = (pillId) => {
+    setActiveFilterPills((prev) => prev.filter((p) => p.id !== pillId));
+    if (openPillId === pillId) setOpenPillId(null);
+  };
 
   const subTabs = [
     "Calls",
@@ -119,21 +338,37 @@ export default function PixlPhoneContent() {
     }, 1200);
   };
 
-  const handleAddFilterClick = () => {
-    if (callsList.length === 0) {
-      setCallsList(sampleCallsData);
-    } else {
-      setCallsList([]);
-    }
-  };
+  const displayCallsList = callsList.length > 0 ? callsList : sampleCallsData;
 
-  const filteredCalls = callsList.filter(
-    (item) =>
+  const filteredCalls = displayCallsList.filter((item) => {
+    const matchesSearch =
+      !searchQuery ||
       item.from.includes(searchQuery) ||
       item.to.includes(searchQuery) ||
       item.answeredBy.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      item.status.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+      item.status.toLowerCase().includes(searchQuery.toLowerCase());
+
+    if (!matchesSearch) return false;
+
+    for (const pill of activeFilterPills) {
+      if (!pill.selected || pill.selected.length === 0) continue;
+
+      if (pill.id === "status") {
+        if (!pill.selected.includes(item.status)) return false;
+      }
+      if (pill.id === "callFlow") {
+        if (!pill.selected.includes(item.callFlow)) return false;
+      }
+      if (pill.id === "adGroup") {
+        if (!pill.selected.includes(item.adSource)) return false;
+      }
+      if (pill.id === "user") {
+        if (!pill.selected.includes(item.answeredBy)) return false;
+      }
+    }
+
+    return true;
+  });
 
   const gridRows = Array.from({ length: 8 });
 
@@ -187,47 +422,229 @@ export default function PixlPhoneContent() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1">
-        <div className="relative self-start">
+      <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
+        {/* Left Side: Active Filter Pills, + Add filter button, ✨ AI filters button */}
+        <div className="flex items-center flex-wrap gap-2.5">
+
+          {/* Active Filter Pills (Screenshots 2 & 3) */}
+          {activeFilterPills.map((pill) => {
+            const isOpen = openPillId === pill.id;
+            const options = categoryOptionsMap[pill.id] || [];
+            const searchVal = pillSearchMap[pill.id] || "";
+            const filteredOpts = options.filter((o) =>
+              o.toLowerCase().includes(searchVal.toLowerCase())
+            );
+            const isAllSelected = pill.selected.length === options.length && options.length > 0;
+
+            let pillLabelText = `${pill.label} is (any)`;
+            if (pill.selected.length === 1) {
+              pillLabelText = `${pill.label} is (${pill.selected[0]})`;
+            } else if (pill.selected.length > 1) {
+              pillLabelText = `${pill.label} is (${pill.selected.length} selected)`;
+            }
+
+            return (
+              <div key={pill.id} className="relative">
+                <div className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-red-50/90 dark:bg-red-950/40 text-[#D31010] dark:text-red-400 border border-red-200/90 dark:border-red-900/60 rounded-xl text-xs font-semibold shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => setOpenPillId(isOpen ? null : pill.id)}
+                    className="flex items-center gap-1 hover:underline cursor-pointer"
+                  >
+                    <span>{pillLabelText}</span>
+                    {isOpen ? (
+                      <ChevronUp className="w-3.5 h-3.5 text-[#D31010] dark:text-red-400" />
+                    ) : (
+                      <ChevronDown className="w-3.5 h-3.5 text-[#D31010] dark:text-red-400" />
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleRemoveFilterPill(pill.id)}
+                    className="p-0.5 rounded-md hover:bg-red-100 dark:hover:bg-red-900/60 text-[#D31010] dark:text-red-400 transition-colors cursor-pointer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+
+                {/* Filter Option Popover Dropdown (Screenshots 2 & 3) */}
+                {isOpen && (
+                  <>
+                    <div
+                      className="fixed inset-0 z-30"
+                      onClick={() => setOpenPillId(null)}
+                    />
+                    <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-3 z-40 text-xs space-y-2.5">
+                      {/* Search Bar */}
+                      <div className="relative">
+                        <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                        <input
+                          type="text"
+                          placeholder={pill.searchPlaceholder || `Search ${pill.label.toLowerCase()}`}
+                          value={searchVal}
+                          onChange={(e) =>
+                            setPillSearchMap({ ...pillSearchMap, [pill.id]: e.target.value })
+                          }
+                          className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-[#D31010] font-medium"
+                        />
+                      </div>
+
+                      {/* Options Checkboxes */}
+                      <div className="max-h-48 overflow-y-auto space-y-0.5 py-1">
+                        <label className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-lg cursor-pointer font-semibold text-slate-800 dark:text-slate-200">
+                          <input
+                            type="checkbox"
+                            checked={isAllSelected}
+                            onChange={() => handleTogglePillOption(pill.id, "Select All")}
+                            className="w-4 h-4 rounded border-slate-300 text-[#D31010] focus:ring-[#D31010] accent-[#D31010]"
+                          />
+                          <span>Select All</span>
+                        </label>
+
+                        {filteredOpts.map((opt) => {
+                          const isChecked = pill.selected.includes(opt);
+                          return (
+                            <label
+                              key={opt}
+                              className="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 rounded-lg cursor-pointer font-medium text-slate-700 dark:text-slate-300"
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={() => handleTogglePillOption(pill.id, opt)}
+                                className="w-4 h-4 rounded border-slate-300 text-[#D31010] focus:ring-[#D31010] accent-[#D31010]"
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+
+                      {/* Apply Button (RED) */}
+                      <button
+                        type="button"
+                        onClick={() => setOpenPillId(null)}
+                        className="w-full py-2 bg-[#D31010] hover:bg-[#b00d0d] text-white font-bold rounded-xl shadow-xs transition-colors cursor-pointer text-center"
+                      >
+                        Apply
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            );
+          })}
+
+          {/* + Add filter Button (Screenshot 1) */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowAddFilterDropdown(!showAddFilterDropdown)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-white dark:bg-[#0E1E31]/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 rounded-xl text-xs font-semibold shadow-2xs hover:border-slate-300 transition-all cursor-pointer"
+            >
+              <Plus className="w-3.5 h-3.5 text-slate-500" />
+              <span>Add filter</span>
+            </button>
+
+            {/* Filter Categories Popover Dropdown (Screenshot 1) */}
+            {showAddFilterDropdown && (
+              <>
+                <div
+                  className="fixed inset-0 z-30"
+                  onClick={() => setShowAddFilterDropdown(false)}
+                />
+                <div className="absolute left-0 mt-2 w-56 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-2.5 z-40 text-xs space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-2.5" />
+                    <input
+                      type="text"
+                      placeholder="Search filters"
+                      value={filterSearchQuery}
+                      onChange={(e) => setFilterSearchQuery(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl text-xs focus:outline-none focus:border-blue-500 font-medium"
+                    />
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto space-y-0.5 pt-1">
+                    {filterCategories
+                      .filter((c) =>
+                        c.label.toLowerCase().includes(filterSearchQuery.toLowerCase())
+                      )
+                      .map((cat) => (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => handleSelectFilterCategory(cat)}
+                          className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/80 rounded-xl font-medium transition-colors cursor-pointer"
+                        >
+                          {cat.label}
+                        </button>
+                      ))}
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          {/* ✨ AI filters Button (Screenshots 1, 2, 3) */}
+          <button
+            type="button"
+            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-purple-50/80 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800/60 rounded-full text-xs font-semibold hover:bg-purple-100/80 transition-all cursor-pointer shadow-2xs"
+          >
+            <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+            <span>AI filters</span>
+          </button>
+        </div>
+
+        {/* Right Side: Date Range Selector Dropdown */}
+        <div className="relative self-start sm:self-auto">
           <button
             onClick={() => setShowDateDropdown(!showDateDropdown)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white dark:bg-[#0E1E31]/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 rounded-xl text-xs font-semibold shadow-sm hover:border-slate-300 transition-colors"
+            className="flex items-center gap-2 px-3.5 py-2.5 bg-white dark:bg-[#0E1E31]/80 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-white/10 rounded-xl text-xs font-semibold shadow-xs hover:border-slate-300 transition-colors cursor-pointer"
           >
-            <span className="text-slate-900 dark:text-white font-bold">Today</span>
-            <span className="text-slate-500 dark:text-slate-400 font-normal">{dateRange}</span>
+            <span className="text-slate-900 dark:text-white font-extrabold">{selectedPreset}</span>
+            <span className="text-slate-400 font-normal">{getDateSubtext(selectedPreset, customStart, customEnd)}</span>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 ml-1" />
           </button>
 
           {showDateDropdown && (
-            <div className="absolute left-0 mt-2 w-64 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-white/10 rounded-xl shadow-xl py-1 z-30 text-xs">
-              {[
-                "Aug 11th, 2026 - Aug 11th, 2026",
-                "Last 7 Days",
-                "Last 30 Days",
-                "This Month",
-              ].map((opt) => (
-                <button
-                  key={opt}
-                  onClick={() => {
-                    setDateRange(opt);
-                    setShowDateDropdown(false);
-                  }}
-                  className="w-full text-left px-4 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors text-slate-700 dark:text-slate-200 font-medium"
-                >
-                  {opt}
-                </button>
-              ))}
-            </div>
+            <>
+              <div className="fixed inset-0 z-20" onClick={() => setShowDateDropdown(false)} />
+              <div className="absolute right-0 mt-1.5 w-72 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-white/10 rounded-2xl shadow-2xl z-30 text-xs overflow-hidden max-h-96 flex flex-col">
+                <div className="px-4 py-2.5 bg-slate-50 dark:bg-slate-900/90 border-b border-slate-100 dark:border-slate-800 shrink-0">
+                  <div className="font-extrabold text-slate-900 dark:text-white text-xs">{selectedPreset}</div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">
+                    {getDateSubtext(selectedPreset, customStart, customEnd)}
+                  </div>
+                </div>
+
+                <div className="overflow-y-auto py-1 divide-y divide-slate-100 dark:divide-slate-800/60">
+                  {workizDateOptions.map((opt) => (
+                    <button
+                      key={opt}
+                      onClick={() => {
+                        if (opt === "Custom") {
+                          setShowDateDropdown(false);
+                          setShowCustomModal(true);
+                        } else {
+                          setSelectedPreset(opt);
+                          setShowDateDropdown(false);
+                        }
+                      }}
+                      className={`w-full text-left px-4 py-2 font-medium transition-colors cursor-pointer ${
+                        selectedPreset === opt
+                          ? "bg-slate-100 dark:bg-slate-800 text-[#D31010] font-bold"
+                          : "text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800/60"
+                      }`}
+                    >
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </>
           )}
         </div>
-
-        <button
-          onClick={handleAddFilterClick}
-          className="flex items-center gap-1.5 px-4 py-2 bg-white dark:bg-[#0E1E31]/80 text-[#D31010] dark:text-red-400 border border-red-200 dark:border-red-900/40 rounded-xl text-xs font-semibold shadow-sm hover:bg-red-50 dark:hover:bg-red-950/20 transition-all self-start sm:self-auto"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Add filter</span>
-        </button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -577,6 +994,77 @@ export default function PixlPhoneContent() {
                   </button>
                 </div>
               </form>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Custom Date Range Picker Modal */}
+      <AnimatePresence>
+        {showCustomModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl max-w-sm w-full space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Select Custom Date Range
+                </h3>
+                <button
+                  onClick={() => setShowCustomModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customStart}
+                    onChange={(e) => setCustomStart(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#D31010]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customEnd}
+                    onChange={(e) => setCustomEnd(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#D31010]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedPreset("Custom");
+                    setShowCustomModal(false);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-[#D31010] hover:bg-[#b00d0d] shadow-sm transition-colors cursor-pointer"
+                >
+                  Apply Filter
+                </button>
+              </div>
             </motion.div>
           </div>
         )}

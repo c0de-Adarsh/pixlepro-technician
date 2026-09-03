@@ -38,6 +38,7 @@ export default function ScheduleContent() {
   const [isUnscheduledDrawerOpen, setIsUnscheduledDrawerOpen] = useState(false);
 
   const [isChoiceModalOpen, setIsChoiceModalOpen] = useState(false);
+  const [choiceInitialType, setChoiceInitialType] = useState("job");
   const [isEventDrawerOpen, setIsEventDrawerOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState(null);
   const [isEditJobDrawerOpen, setIsEditJobDrawerOpen] = useState(false);
@@ -107,6 +108,15 @@ export default function ScheduleContent() {
     setSelectedSlotDate(dateStr);
     setSelectedSlotTime(time24);
     setSelectedSlotTime12(time12);
+    setChoiceInitialType("job");
+    setIsChoiceModalOpen(true);
+  };
+
+  const handleAddTimeOffButtonClick = () => {
+    const todayYMD = formatToYMD(currentDate.getDate());
+    setSelectedSlotInfo(`Thu, Aug 20 • 12:00am - 12:15am`);
+    setSelectedSlotDate(todayYMD);
+    setChoiceInitialType("time_off");
     setIsChoiceModalOpen(true);
   };
 
@@ -904,8 +914,19 @@ export default function ScheduleContent() {
               type="button"
               onClick={() => router.push("/settings/schedule")}
               className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Schedule Settings"
             >
               <Clock className="w-4 h-4" />
+            </button>
+
+            {/* ADD TIME OFF BUTTON (Workiz Toolbar Icon) */}
+            <button
+              type="button"
+              onClick={handleAddTimeOffButtonClick}
+              className="p-2 text-slate-500 hover:text-[#D31010] rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Add time off"
+            >
+              <CalendarPlus className="w-4 h-4 text-slate-600 dark:text-slate-300 hover:text-[#D31010]" />
             </button>
           </div>
         </div>
@@ -1367,6 +1388,7 @@ export default function ScheduleContent() {
         isOpen={isChoiceModalOpen}
         onClose={() => setIsChoiceModalOpen(false)}
         slotInfo={selectedSlotInfo}
+        initialType={choiceInitialType}
         onContinueJob={() => router.push(`/jobs/new?date=${selectedSlotDate}&time=${selectedSlotTime12}`)}
         onContinueLead={() => router.push(`/leads?create=true&date=${selectedSlotDate}&time=${selectedSlotTime12}`)}
         onContinueEvent={() => {

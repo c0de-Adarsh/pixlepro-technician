@@ -18,6 +18,7 @@ import {
   ExternalLink,
   ChevronRight,
   Filter,
+  X,
 } from "lucide-react";
 import { Api } from "../services/service";
 import TechnicianDashboardContent from "./TechnicianDashboardContent";
@@ -27,18 +28,29 @@ export default function DashboardContent({ searchQuery = "" }) {
 
   const [dateRange, setDateRange] = useState("Last 30 days");
   const [isDateDropdownOpen, setIsDateDropdownOpen] = useState(false);
+  const [showCustomModal, setShowCustomModal] = useState(false);
+  const [customStartDate, setCustomStartDate] = useState("");
+  const [customEndDate, setCustomEndDate] = useState("");
   const [sourceMetric, setSourceMetric] = useState("Sales"); // "Sales" or "Jobs"
   const [statsData, setStatsData] = useState(null);
   const [loading, setLoading] = useState(true);
 
   const dateOptions = [
+    "Custom",
     "Today",
     "Yesterday",
     "Last 7 days",
+    "Last 14 days",
     "Last 30 days",
+    "Last month",
     "This month",
     "This year",
-    "Custom",
+    "Last year",
+    "This week (Sun-Today)",
+    "This week (Mon-Today)",
+    "Last week (Sun-Sat)",
+    "Last week (Mon-Sun)",
+    "Last business week (Mon-Fri)",
   ];
 
   useEffect(() => {
@@ -166,19 +178,24 @@ export default function DashboardContent({ searchQuery = "" }) {
                   initial={{ opacity: 0, y: 5 }}
                   animate={{ opacity: 1, y: 0 }}
                   exit={{ opacity: 0, y: 5 }}
-                  className="absolute right-0 mt-1.5 w-44 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl py-1.5 z-30 divide-y divide-slate-100 dark:divide-slate-800 text-xs"
+                  className="absolute right-0 mt-1.5 w-64 bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl py-1.5 z-30 divide-y divide-slate-100 dark:divide-slate-800 text-xs max-h-80 overflow-y-auto"
                 >
                   {dateOptions.map((opt) => (
                     <button
                       key={opt}
                       type="button"
                       onClick={() => {
-                        setDateRange(opt);
-                        setIsDateDropdownOpen(false);
+                        if (opt === "Custom") {
+                          setIsDateDropdownOpen(false);
+                          setShowCustomModal(true);
+                        } else {
+                          setDateRange(opt);
+                          setIsDateDropdownOpen(false);
+                        }
                       }}
-                      className={`w-full text-left px-4 py-2 font-bold transition-colors cursor-pointer ${
+                      className={`w-full text-left px-4 py-2 font-semibold transition-colors cursor-pointer ${
                         dateRange === opt
-                          ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+                          ? "bg-red-50 dark:bg-red-950/30 text-[#D31010] font-bold"
                           : "text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-900"
                       }`}
                     >
@@ -780,6 +797,81 @@ export default function DashboardContent({ searchQuery = "" }) {
           </div>
         </div>
       </div>
+
+      {/* Custom Date Range Picker Modal */}
+      <AnimatePresence>
+        {showCustomModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs">
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="bg-white dark:bg-[#0E1E31] border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-2xl max-w-sm w-full space-y-4"
+            >
+              <div className="flex items-center justify-between">
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  Select Custom Date Range
+                </h3>
+                <button
+                  onClick={() => setShowCustomModal(false)}
+                  className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg transition-colors cursor-pointer"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs">
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    Start Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customStartDate}
+                    onChange={(e) => setCustomStartDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#D31010]"
+                  />
+                </div>
+                <div>
+                  <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    End Date
+                  </label>
+                  <input
+                    type="date"
+                    value={customEndDate}
+                    onChange={(e) => setCustomEndDate(e.target.value)}
+                    className="w-full px-3.5 py-2.5 border border-slate-200 dark:border-slate-700/80 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-100 font-semibold focus:outline-none focus:border-[#D31010]"
+                  />
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowCustomModal(false)}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (customStartDate && customEndDate) {
+                      setDateRange(`${customStartDate} to ${customEndDate}`);
+                    } else {
+                      setDateRange("Custom");
+                    }
+                    setShowCustomModal(false);
+                  }}
+                  className="px-4 py-2.5 rounded-xl text-xs font-bold text-white bg-[#D31010] hover:bg-[#b00d0d] shadow-sm transition-colors cursor-pointer"
+                >
+                  Apply Filter
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

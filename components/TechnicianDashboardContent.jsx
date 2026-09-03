@@ -138,12 +138,21 @@ export default function TechnicianDashboardContent({ searchQuery = "" }) {
     : kpiCards;
 
   const dateOptions = [
+    "Custom",
     "Today",
     "Yesterday",
     "Last 7 days",
+    "Last 14 days",
     "Last 30 days",
+    "Last month",
     "This month",
     "This year",
+    "Last year",
+    "This week (Sun-Today)",
+    "This week (Mon-Today)",
+    "Last week (Sun-Sat)",
+    "Last week (Mon-Sun)",
+    "Last business week (Mon-Fri)",
   ];
 
   const maxBarSales = Math.max(...barChartData.map((b) => Number(b.sales) || 0), 1000);

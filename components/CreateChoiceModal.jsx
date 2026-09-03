@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { X } from "lucide-react";
 
@@ -6,12 +6,19 @@ export default function CreateChoiceModal({
   isOpen,
   onClose,
   slotInfo = "Sun, Sep 13 • 12:00am - 12:15am",
+  initialType = "job",
   onContinueJob,
   onContinueLead,
   onContinueEvent,
   onContinueTimeOff,
 }) {
-  const [selectedType, setSelectedType] = useState("job");
+  const [selectedType, setSelectedType] = useState(initialType);
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedType(initialType || "job");
+    }
+  }, [isOpen, initialType]);
 
   const handleContinue = () => {
     onClose();

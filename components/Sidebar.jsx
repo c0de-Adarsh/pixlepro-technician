@@ -95,9 +95,9 @@ export default function Sidebar({
         <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push(isTech ? "/schedule" : "/")}>
           <div className="relative h-16 w-52 flex items-center justify-start">
             <img
-              src="/Margin (1).png"
+              src={theme === "dark" ? "/transparentlogo.png" : "/Margin (1).png"}
               alt="PiXL Pro Logo"
-              className="h-14 object-contain dark:brightness-110"
+              className="h-14 object-contain"
               onError={(e) => {
                 e.currentTarget.style.display = "none";
                 const fallback = e.currentTarget.nextElementSibling;
