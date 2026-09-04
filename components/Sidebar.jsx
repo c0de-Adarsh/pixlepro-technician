@@ -41,6 +41,7 @@ const adminNavItems = [
 ];
 
 const techNavItems = [
+  { id: "home", label: "Home", icon: Home, href: "/" },
   { id: "schedule", label: "Schedule", icon: Calendar, href: "/schedule" },
   { id: "map", label: "Map", icon: MapPin, href: "/map" },
   { id: "jobs", label: "Jobs", icon: Briefcase, href: "/jobs" },
@@ -92,7 +93,7 @@ export default function Sidebar({
     <div className="flex flex-col h-full w-full py-5 px-4 text-slate-700 dark:text-slate-200 overflow-y-auto space-y-5">
       {/* Logo */}
       <div className="flex items-center justify-between px-2 mb-1">
-        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push(isTech ? "/schedule" : "/")}>
+        <div className="flex items-center gap-3 cursor-pointer" onClick={() => router.push("/")}>
           <div className="relative h-16 w-52 flex items-center justify-start">
             <img
               src={theme === "dark" ? "/transparentlogo.png" : "/Margin (1).png"}
